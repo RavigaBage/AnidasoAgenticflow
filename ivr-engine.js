@@ -169,9 +169,9 @@ class IvrEngine {
     const callbackUrl = process.env.PUBLIC_CALLBACK_URL || '';
     const callbackAttr = callbackUrl ? ` callbackUrl="${callbackUrl}"` : '';
 
-    // Turn 0: Call just started. Greet with audio menu and begin recording user voice response
+    // Turn 0: Call just started. Greet with MTN script menu and begin recording user voice response
     if (session.step === 0 && !recordingUrl && !dtmfDigits && !simulatedSpeech) {
-      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. Please tell us what you would like to do, and press hash when you are done.</Say>`;
+      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. To send money, press 1 or say send money. For account and balance enquiry, press 2. To withdraw money, press 3. Please speak your choice or press a key, followed by the hash key.</Say>`;
       
       // If user has a pre-recorded audio file menu configured in .env
       if (this.audioMenuUrl) {
@@ -186,7 +186,7 @@ class IvrEngine {
 
       return {
         xml,
-        summary: 'Voice AI Greeting & Prompt (<Record> listening for user voice)',
+        summary: 'Voice AI Greeting & MTN Menu (<Record> listening for choice or speech)',
         transcript: null,
         aiReply: null
       };
@@ -203,9 +203,16 @@ class IvrEngine {
         onAiProgress(session.sessionId, { stage: 'TRANSCRIBING', recordingUrl });
       }
       userSpeech = await transcriptionService.transcribeAudioFromUrl(recordingUrl);
+      if (dtmfDigits) {
+        const cleanDigits = String(dtmfDigits).replace(/#/g, '').trim();
+        if (cleanDigits) {
+          userSpeech = userSpeech ? `${userSpeech} (Caller pressed key ${cleanDigits})` : `Option ${cleanDigits}`;
+        }
+      }
     } else if (dtmfDigits) {
-      // Fallback if user entered keypad digits
-      userSpeech = `Option ${dtmfDigits}`;
+      // Fallback if user entered keypad digits without audio
+      const cleanDigits = String(dtmfDigits).replace(/#/g, '').trim();
+      userSpeech = `Option ${cleanDigits || dtmfDigits}`;
     } else {
       userSpeech = 'Hello, can you help me?';
     }
