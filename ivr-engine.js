@@ -172,13 +172,14 @@ class IvrEngine {
     // Turn 0: Call just started. Greet with MTN script menu and begin recording user voice response
     if (session.step === 0 && !recordingUrl && !dtmfDigits && !simulatedSpeech) {
       let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. To send money, press 1 or say send money. For account and balance enquiry, press 2. To withdraw money, press 3. Please speak your choice or press a key, followed by the hash key.</Say>`;
-      
+
       // If user has a pre-recorded audio file menu configured in .env
       if (this.audioMenuUrl) {
         promptTag = `<Play url="${this.audioMenuUrl}"/>`;
       }
 
-      const xml = `<Response>
+      const xml =
+        `<Response>
   <Record finishOnKey="#" maxLength="12" timeout="2" trimSilence="true" playBeep="true"${callbackAttr}>
     ${promptTag}
   </Record>
