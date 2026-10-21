@@ -6,6 +6,7 @@
  * Easily swap or plug in any ASR service (Deepgram, Google STT, AssemblyAI, Whisper).
  */
 
+require('dotenv').config();
 const axios = require('axios');
 
 class TranscriptionService {
@@ -41,22 +42,55 @@ class TranscriptionService {
       return '';
     }
 
+    // Africa's Talking appends a trailing 'T' to the filename (e.g. hashT.mp3) during interim turn callbacks,
+    // while the actual audio file stored on AT's media storage is hash.mp3.
+    // Try without trailing 'T' first, then fallback to original URL.
+    const urlCandidates = [];
+    if (/T\.mp3$/i.test(recordingUrl)) {
+      urlCandidates.push(recordingUrl.replace(/T\.mp3$/i, '.mp3'));
+      urlCandidates.push(recordingUrl);
+    } else {
+      urlCandidates.push(recordingUrl);
+      urlCandidates.push(recordingUrl.replace(/\.mp3$/i, 'T.mp3'));
+    }
+
     console.log(`[ASR Service] Processing audio from URL: ${recordingUrl} using provider: ${this.provider}`);
 
-    try {
-      // 1. Download audio file buffer
-      const audioResponse = await axios.get(recordingUrl, {
-        responseType: 'arraybuffer',
-        timeout: 15000
-      });
-      const audioBuffer = Buffer.from(audioResponse.data);
+    let audioBuffer = null;
+    let lastError = null;
 
-      // 2. Delegate to active ASR provider
-      return await this.transcribeBuffer(audioBuffer, 'recording.mp3');
-    } catch (err) {
-      console.warn(`[ASR Service] Could not fetch audio from URL directly (${err.message}). Using fallback.`);
-      return `User spoken message from recording`;
+    for (const url of urlCandidates) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const audioResponse = await axios.get(url, {
+            responseType: 'arraybuffer',
+            timeout: 15000,
+            headers: {
+              'User-Agent': 'Anidaso-Voice-Agent/1.0',
+              'Accept': 'audio/*, */*'
+            }
+          });
+          if (audioResponse.status === 200 && audioResponse.data && audioResponse.data.length > 0) {
+            audioBuffer = Buffer.from(audioResponse.data);
+            break;
+          }
+        } catch (err) {
+          lastError = err;
+          // If AT storage is still finalizing the audio file, pause briefly before retrying
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 600));
+          }
+        }
+      }
+      if (audioBuffer) break;
     }
+
+    if (audioBuffer) {
+      return await this.transcribeBuffer(audioBuffer, 'recording.mp3');
+    }
+
+    console.warn(`[ASR Service] Could not fetch audio from URL candidates (${lastError?.message || 'Empty response'}). Using fallback.`);
+    return `User spoken message from recording`;
   }
 
   /**
