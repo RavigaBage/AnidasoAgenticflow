@@ -61,7 +61,7 @@ class TranscriptionService {
     let audioBuffer = null;
     let lastError = null;
     const maxAttempts = 4;
-    const delays = [800, 1100, 1500];
+    const delays = [500, 800, 1200];
 
     for (let i = 0; i < maxAttempts; i++) {
       const attempt = i + 1;
@@ -134,6 +134,7 @@ class TranscriptionService {
       formData.append('file', audioBlob, filename);
       formData.append('model', this.whisperModel);
       formData.append('language', 'en');
+      formData.append('temperature', '0');
       formData.append('response_format', 'json');
 
       const response = await axios.post(

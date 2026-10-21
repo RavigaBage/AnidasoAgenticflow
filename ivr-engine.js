@@ -179,7 +179,7 @@ class IvrEngine {
       }
 
       const xml = `<Response>
-  <Record finishOnKey="#" maxLength="15" timeout="3" trimSilence="true" playBeep="true"${callbackAttr}>
+  <Record finishOnKey="#" maxLength="12" timeout="2" trimSilence="true" playBeep="true"${callbackAttr}>
     ${promptTag}
   </Record>
 </Response>`;
@@ -269,8 +269,8 @@ class IvrEngine {
 
     // 3. Return XML to speak the AI answer back to caller and keep listening
     const xml = `<Response>
-  <Record finishOnKey="#" maxLength="15" timeout="3" trimSilence="true" playBeep="false"${callbackAttr}>
-    <Say voice="en-US-Standard-C">${aiReply} Please press hash when done.</Say>
+  <Record finishOnKey="#" maxLength="12" timeout="2" trimSilence="true" playBeep="false"${callbackAttr}>
+    <Say voice="en-US-Standard-C">${aiReply}</Say>
   </Record>
 </Response>`;
 

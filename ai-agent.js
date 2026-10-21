@@ -636,10 +636,10 @@ VOICE FORMAT:
         messages: sessionMem.llmMessages,
         tools,
         tool_choice: 'auto',
-        temperature: 0.3,
+        temperature: 0.2,
         reasoning_effort: 'low',
         reasoning_format: 'hidden',
-        max_tokens: 280
+        max_tokens: 180
       });
 
       const choice = response.data?.choices?.[0];
@@ -690,12 +690,10 @@ VOICE FORMAT:
           const followUpResponse = await this.callGroq({
             model: this.model,
             messages: sessionMem.llmMessages,
-            tools,
-            tool_choice: 'auto',
-            temperature: 0.3,
+            temperature: 0.2,
             reasoning_effort: 'low',
             reasoning_format: 'hidden',
-            max_tokens: 220
+            max_tokens: 150
           });
           finalVoiceReply = followUpResponse.data?.choices?.[0]?.message?.content?.trim();
         } catch (followUpErr) {
