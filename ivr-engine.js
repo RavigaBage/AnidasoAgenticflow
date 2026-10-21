@@ -101,8 +101,22 @@ class IvrEngine {
     const session = this.getOrCreateSession(payload);
     const { isActive, dtmfDigits, recordingUrl } = payload;
 
-    // If call has ended (isActive = 0), no action needed
+    // If call has ended (isActive = 0), no further XML response needed
     if (!session.isActive || isActive === '0' || isActive === 0) {
+      if (recordingUrl) {
+        console.log(`[IVR] Call ended with final recording URL: ${recordingUrl}. Transcribing in background...`);
+        transcriptionService.transcribeAudioFromUrl(recordingUrl).then(transcript => {
+          console.log(`[IVR] Final recording transcript: "${transcript}"`);
+          session.conversation.push({
+            timestamp: new Date().toISOString(),
+            userTranscript: transcript,
+            aiResponse: '(Call ended before AI response)',
+            actionExecuted: null
+          });
+        }).catch(err => {
+          console.warn('[IVR] Error transcribing final recording:', err.message);
+        });
+      }
       const completionXml = `<Response></Response>`;
       session.lastXmlResponse = completionXml;
       return { session, xml: completionXml, actionSummary: 'Call session ended' };
@@ -152,9 +166,12 @@ class IvrEngine {
    * Handle Conversational Voice AI Flow
    */
   async handleAiAgentTurn(session, recordingUrl, dtmfDigits, simulatedSpeech, onAiProgress) {
+    const callbackUrl = process.env.PUBLIC_CALLBACK_URL || '';
+    const callbackAttr = callbackUrl ? ` callbackUrl="${callbackUrl}"` : '';
+
     // Turn 0: Call just started. Greet with audio menu and begin recording user voice response
     if (session.step === 0 && !recordingUrl && !dtmfDigits && !simulatedSpeech) {
-      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Africa's Talking Voice AI. Please listen to our options: tell us what you would like to do, or select from the menu. We are listening.</Say>`;
+      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. Please tell us what you would like to do, and press hash when you are done.</Say>`;
       
       // If user has a pre-recorded audio file menu configured in .env
       if (this.audioMenuUrl) {
@@ -162,8 +179,9 @@ class IvrEngine {
       }
 
       const xml = `<Response>
-  ${promptTag}
-  <Record finishOnKey="#" maxLength="25" timeout="4" trimSilence="true" playBeep="true"/>
+  <Record finishOnKey="#" maxLength="15" timeout="3" trimSilence="true" playBeep="true"${callbackAttr}>
+    ${promptTag}
+  </Record>
 </Response>`;
 
       return {
@@ -232,8 +250,9 @@ class IvrEngine {
 
     // 3. Return XML to speak the AI answer back to caller and keep listening
     const xml = `<Response>
-  <Say voice="en-US-Standard-C">${aiReply}</Say>
-  <Record finishOnKey="#" maxLength="25" timeout="4" trimSilence="true" playBeep="false"/>
+  <Record finishOnKey="#" maxLength="15" timeout="3" trimSilence="true" playBeep="false"${callbackAttr}>
+    <Say voice="en-US-Standard-C">${aiReply} Please press hash when done.</Say>
+  </Record>
 </Response>`;
 
     return {
