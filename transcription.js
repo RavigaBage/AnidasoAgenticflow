@@ -44,52 +44,62 @@ class TranscriptionService {
 
     // Africa's Talking appends a trailing 'T' to the filename (e.g. hashT.mp3) during interim turn callbacks,
     // while the actual audio file stored on AT's media storage is hash.mp3.
-    // Try without trailing 'T' first, then fallback to original URL.
+    const cleanUrl = recordingUrl.replace(/T\.mp3(\?.*)?$/i, '.mp3$1');
     const urlCandidates = [];
-    if (/T\.mp3$/i.test(recordingUrl)) {
-      urlCandidates.push(recordingUrl.replace(/T\.mp3$/i, '.mp3'));
-      urlCandidates.push(recordingUrl);
-    } else {
-      urlCandidates.push(recordingUrl);
-      urlCandidates.push(recordingUrl.replace(/\.mp3$/i, 'T.mp3'));
+    if (cleanUrl !== recordingUrl) {
+      urlCandidates.push(cleanUrl);
     }
+    urlCandidates.push(recordingUrl);
 
-    console.log(`[ASR Service] Processing audio from URL: ${recordingUrl} using provider: ${this.provider}`);
+    console.log(`\n======================================================`);
+    console.log(`🎙️ [ASR SERVICE] Processing Audio Recording`);
+    console.log(`Original URL : ${recordingUrl}`);
+    console.log(`Candidate URL: ${cleanUrl}`);
+    console.log(`Provider     : ${this.provider} (${this.whisperModel})`);
+    console.log(`======================================================`);
 
     let audioBuffer = null;
     let lastError = null;
+    const maxAttempts = 4;
+    const delays = [800, 1100, 1500];
 
-    for (const url of urlCandidates) {
-      for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let i = 0; i < maxAttempts; i++) {
+      const attempt = i + 1;
+      for (const url of urlCandidates) {
         try {
+          console.log(`📥 [ASR Download] Attempt ${attempt}/${maxAttempts}: Fetching ${url} ...`);
           const audioResponse = await axios.get(url, {
             responseType: 'arraybuffer',
-            timeout: 15000,
+            timeout: 10000,
             headers: {
-              'User-Agent': 'Anidaso-Voice-Agent/1.0',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               'Accept': 'audio/*, */*'
             }
           });
           if (audioResponse.status === 200 && audioResponse.data && audioResponse.data.length > 0) {
             audioBuffer = Buffer.from(audioResponse.data);
+            console.log(`✅ [ASR Download] Succeeded on attempt ${attempt}: Received ${audioBuffer.length} bytes from ${url}`);
             break;
           }
         } catch (err) {
           lastError = err;
-          // If AT storage is still finalizing the audio file, pause briefly before retrying
-          if (attempt < 2) {
-            await new Promise(r => setTimeout(r, 600));
-          }
+          console.log(`⏳ [ASR Download] Attempt ${attempt} (${url.split('/').pop()}): HTTP ${err.response?.status || err.message}`);
         }
       }
       if (audioBuffer) break;
+
+      if (i < delays.length) {
+        console.log(`⏳ [ASR Download] Audio file not ready on AT storage yet. Pausing ${delays[i]}ms before attempt ${attempt + 1}...`);
+        await new Promise(r => setTimeout(r, delays[i]));
+      }
     }
 
     if (audioBuffer) {
+      console.log(`🎙️ [ASR Transcribing] Sending ${audioBuffer.length} bytes to Groq Whisper (${this.whisperModel})...`);
       return await this.transcribeBuffer(audioBuffer, 'recording.mp3');
     }
 
-    console.warn(`[ASR Service] Could not fetch audio from URL candidates (${lastError?.message || 'Empty response'}). Using fallback.`);
+    console.warn(`❌ [ASR Download Failed] Could not fetch audio after ${maxAttempts} attempts (${lastError?.message || 'Empty response'}). Using fallback.`);
     return `User spoken message from recording`;
   }
 
@@ -140,10 +150,14 @@ class TranscriptionService {
       );
 
       const transcript = response.data?.text?.trim();
-      console.log(`[ASR Service] Successfully transcribed audio: "${transcript}"`);
+      console.log(`\n======================================================`);
+      console.log(`🎙️ [ASR TRANSCRIPTION SUCCESS]`);
+      console.log(`Model      : ${this.whisperModel}`);
+      console.log(`Transcript : "${transcript}"`);
+      console.log(`======================================================\n`);
       return transcript || 'No speech detected';
     } catch (error) {
-      console.error('[ASR Groq Whisper Error]:', error.response?.data || error.message);
+      console.error(`❌ [ASR Groq Whisper Error]: Status: ${error.response?.status} - ${JSON.stringify(error.response?.data || error.message)}`);
       return 'I would like to check my account options';
     }
   }

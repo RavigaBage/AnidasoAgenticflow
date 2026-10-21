@@ -511,11 +511,11 @@ app.post('/api/end-session', (req, res) => {
 const HOST = '0.0.0.0';
 server.listen(PORT, HOST, () => {
   console.log(`\n======================================================`);
-  console.log(`📞 Africa's Talking Phone Simulator running!`);
-  console.log(`🌐 Port: ${PORT} | Host: ${HOST}`);
-  console.log(`📡 Africa's Talking Webhook: /voice/callback`);
-  console.log(`🤖 AI Engine: Groq (${aiAgent.model})`);
-  console.log(`🎙️  ASR Provider: ${transcriptionService.provider}`);
-  console.log(`⚙️  Current Mode: ${ivrEngine.mode}`);
+  console.log(`Africa's Talking Phone Simulator running!`);
+  console.log(` Port: ${PORT} | Host: ${HOST}`);
+  console.log(`Africa's Talking Webhook: /voice/callback`);
+  console.log(`AI Engine: Groq (${aiAgent.model})`);
+  console.log(` ASR Provider: ${transcriptionService.provider}`);
+  console.log(` Current Mode: ${ivrEngine.mode}`);
   console.log(`======================================================\n`);
 });

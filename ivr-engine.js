@@ -217,6 +217,13 @@ class IvrEngine {
       userSpeech = 'Hello, can you help me?';
     }
 
+    console.log(`\n======================================================`);
+    console.log(`🤖 [IVR ENGINE] Turn ${session.step} (Session: ${session.sessionId})`);
+    console.log(`Caller Input  : "${userSpeech}"`);
+    if (dtmfDigits) console.log(`Keypad Digits : ${dtmfDigits}`);
+    if (recordingUrl) console.log(`Recording URL : ${recordingUrl}`);
+    console.log(`======================================================\n`);
+
     if (typeof onAiProgress === 'function') {
       onAiProgress(session.sessionId, { stage: 'THINKING', transcript: userSpeech });
     }
@@ -234,6 +241,11 @@ class IvrEngine {
     const agentResult = await aiAgent.generateVoiceReply(session.sessionId, userSpeech, callContext);
     const aiReply = typeof agentResult === 'object' && agentResult.reply ? agentResult.reply : agentResult;
     const actionExecuted = typeof agentResult === 'object' ? agentResult.actionExecuted : null;
+
+    console.log(`\n💬 [AI Spoken Reply Turn ${session.step}]: "${aiReply}"`);
+    if (actionExecuted) {
+      console.log(`⚡ [Action Triggered]: ${actionExecuted.name} | Params:`, actionExecuted.params, `| Status: ${actionExecuted.result?.status || 'COMPLETED'}`);
+    }
 
     // Save to conversation history
     session.conversation.push({
