@@ -1,0 +1,59 @@
+{
+  "organization": "Anidaso Telephony Voice AI",
+  "version": "1.1.0",
+  "description": "Core knowledge base and service registry for the Africa's Talking Voice AI Assistant and MTN Mobile Money",
+  "availableServices": [
+    {
+      "id": "send_money",
+      "name": "Send Money (Transfer)",
+      "description": "Send money to mobile money subscribers with recipient number, amount, reference, and explicit confirmation",
+      "action": "send_money_mtn",
+      "keywords": [
+        "send money",
+        "transfer",
+        "payment",
+        "pay"
+      ]
+    },
+    {
+      "id": "check_balance",
+      "name": "Check Balance",
+      "description": "Inquire about available mobile money account balance",
+      "action": "check_balance_mtn",
+      "keywords": [
+        "balance",
+        "check balance",
+        "account balance",
+        "how much"
+      ]
+    },
+    {
+      "id": "cash_out",
+      "name": "Cash Out (Withdrawal)",
+      "description": "Initiate cash out withdrawal at an authorized mobile money agent",
+      "action": "cash_out_mtn",
+      "keywords": [
+        "cash out",
+        "withdraw",
+        "withdrawal"
+      ]
+    },
+    {
+      "id": "verify_kyc",
+      "name": "Verify Recipient Name & KYC",
+      "description": "Verify registered subscriber name and active account status on MTN Mobile Money",
+      "action": "verify_kyc_mtn",
+      "keywords": [
+        "verify name",
+        "check name",
+        "kyc",
+        "who is",
+        "account name"
+      ]
+    }
+  ],
+  "outOfScopePolicy": {
+    "handling": "If the caller asks about anything outside these supported services (such as general internet trivia, weather forecasts, entertainment, medical advice, legal counsel, or unrelated products):",
+    "instructions": "Politely state in one concise sentence that you cannot assist with that topic because you only handle Anidaso account services (sending money, cash out, checking balances, and recipient verification). Then ask how you can help with one of those services."
+  }
+}

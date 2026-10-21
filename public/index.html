@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Africa's Talking Voice Simulator & Handset Engine</title>
+  <meta name="description" content="Real-time Africa's Talking Voice API phone simulator, IVR tester, webhook event processor, and dialer interface.">
+  
+  <!-- Modern Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="brand-wrapper">
+      <div class="brand-icon">📞</div>
+      <div class="brand-text">
+        <h1>Africa's Talking Voice Simulator</h1>
+        <div class="brand-tagline">
+          <span>Live Webhook Processor &amp; Interactive Phone</span>
+          <span class="badge-tag">Voice API v1.0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-meta">
+      <!-- Groq AI Pill -->
+      <div class="status-pill" id="groqPill" style="border-color: rgba(139, 92, 246, 0.4); background: rgba(139, 92, 246, 0.1);">
+        <span class="indicator-dot" style="background: #a855f7; box-shadow: 0 0 10px #a855f7;"></span>
+        <span id="groqStatusText" style="font-weight: 600; font-size: 0.75rem; color: #d8b4fe;">AI: GROQ (openai/gpt-oss-20b)</span>
+      </div>
+
+      <!-- Status Pill -->
+      <div class="status-pill" id="statusPill">
+        <span class="indicator-dot" id="connectionDot"></span>
+        <span id="connectionStatusText" style="font-weight: 600; font-size: 0.75rem;">CONNECTING...</span>
+      </div>
+
+      <!-- Webhook URL Display -->
+      <div class="webhook-info-pill" id="copyWebhookBtn" title="Click to copy callback webhook URL">
+        <span>📡 Webhook:</span>
+        <span id="webhookUrlDisplay">/voice/callback</span>
+        <span style="font-size: 0.7rem; opacity: 0.7;">📋</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Dashboard Grid -->
+  <main class="dashboard-container">
+
+    <!-- ==========================================
+         COLUMN 1: PHONE HANDSET SIMULATOR
+         ========================================== -->
+    <section class="column-left" aria-label="Interactive Phone Simulator">
+      <div class="phone-chassis">
+        <div class="phone-speaker-grille"></div>
+
+        <!-- Phone Display Screen -->
+        <div class="phone-screen" id="phoneScreen">
+          <div class="screen-top-bar">
+            <span class="network-badge">● AT GATEWAY</span>
+            <span id="callTimer" class="call-timer">00:00</span>
+          </div>
+
+          <div class="call-state-hero">
+            <div class="call-status-label" id="phoneStatusLabel">IDLE</div>
+            <div class="phone-number-display" id="phoneNumberDisplay">Ready</div>
+            <div class="destination-subtext" id="phoneDestDisplay">No Active Call</div>
+          </div>
+
+          <!-- Live TTS Speech / IVR Transcript -->
+          <div class="live-transcript-box" id="liveTranscriptBox">
+            <div class="tts-label">
+              <span>🔊</span> Voice Prompt (TTS):
+            </div>
+            <div id="transcriptContent">Awaiting Africa's Talking event...</div>
+          </div>
+        </div>
+
+        <!-- Phone Keypad Grid -->
+        <div class="keypad-grid" id="keypadGrid">
+          <button type="button" class="key-btn" data-digit="1" id="key-1">
+            <span class="key-digit">1</span>
+            <span class="key-sub">. @ /</span>
+          </button>
+          <button type="button" class="key-btn" data-digit="2" id="key-2">
+            <span class="key-digit">2</span>
+            <span class="key-sub">A B C</span>
+          </button>
+          <button type="button" class="key-btn" data-digit="3" id="key-3">
+            <span class="key-digit">3</span>
+            <span class="key-sub">D E F</span>
+          </button>
+
+          <button type="button" class="key-btn" data-digit="4" id="key-4">
+            <span class="key-digit">4</span>
+            <span class="key-sub">G H I</span>
+          </button>
+          <button type="button" class="key-btn" data-digit="5" id="key-5">
+            <span class="key-digit">5</span>
+            <span class="key-sub">J K L</span>
+          </button>
+          <button type="button" class="key-btn" data-digit="6" id="key-6">
+            <span class="key-digit">6</span>
+            <span class="key-sub">M N O</span>
+          </button>
+
+          <button type="button" class="key-btn" data-digit="7" id="key-7">
+            <span class="key-digit">7</span>
+            <span class="key-sub">P Q R S</span>
+          </button>
+          <button type="button" class="key-btn" data-digit="8" id="key-8">
+            <span class="key-digit">8</span>
+            <span class="key-sub">T U V</span>
+          </button>
+          <button type="button" class="key-btn" data-digit="9" id="key-9">
+            <span class="key-digit">9</span>
+            <span class="key-sub">W X Y Z</span>
+          </button>
+
+          <button type="button" class="key-btn" data-digit="*" id="key-star">
+            <span class="key-digit">*</span>
+            <span class="key-sub">STAR</span>
+          </button>
+          <button type="button" class="key-btn" data-digit="0" id="key-0">
+            <span class="key-digit">0</span>
+            <span class="key-sub">+</span>
+          </button>
+          <button type="button" class="key-btn" data-digit="#" id="key-hash">
+            <span class="key-digit">#</span>
+            <span class="key-sub">HASH</span>
+          </button>
+        </div>
+
+        <!-- Call Actions Row -->
+        <div class="call-actions-row">
+          <button type="button" class="action-btn-circle btn-answer" id="btnAnswer">
+            <span>📞</span> Answer
+          </button>
+          <button type="button" class="action-btn-circle btn-hangup" id="btnHangup" disabled>
+            <span>🛑</span> End Call
+          </button>
+        </div>
+
+        <!-- Auxiliary Phone Controls -->
+        <div class="phone-aux-row">
+          <button type="button" class="aux-btn" id="btnMute">
+            🎤 <span>Mute</span>
+          </button>
+          <button type="button" class="aux-btn" id="btnSpeaker">
+            🔊 <span>Speaker</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         COLUMN 2: LIVE EVENT FEED & SESSIONS
+         ========================================== -->
+    <section class="column-center" aria-label="Event Feeds and Session Management">
+      
+      <!-- Top Action Banner with Speech-to-AI Simulator -->
+      <div class="action-banner-card">
+        <div class="banner-content">
+          <h2>Voice AI Gateway &amp; Conversational Agent</h2>
+          <p>Transcribes caller audio from Africa's Talking and queries Groq AI in real time.</p>
+        </div>
+        <div class="banner-buttons">
+          <button type="button" class="btn-secondary" id="btnOpenMomoModal" style="background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.4); color: #fbbf24;">
+            <span>💛</span> Test MoMo Sandbox
+          </button>
+          <button type="button" class="btn-secondary" id="btnQuickTest">
+            <span>⚡</span> Test Webhook
+          </button>
+          <button type="button" class="btn-primary" id="btnOpenOutboundModal">
+            <span>🚀</span> Outbound Call
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Voice AI Conversation Thread -->
+      <div class="ai-dialogue-card">
+        <div class="ai-dialogue-header">
+          <div class="ai-dialogue-title">
+            <span>🧠</span> Live Voice AI Dialogue (Caller ⇄ Groq)
+          </div>
+          <span class="badge-tag" id="aiStatusTicker" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;">
+            Ready (Listening)
+          </span>
+        </div>
+        
+        <div class="ai-dialogue-thread" id="aiDialogueThread">
+          <div class="dialogue-turn" id="initialAiGreetingBubble">
+            <div class="bubble-ai">
+              <div class="bubble-meta">
+                <span>🤖</span> Groq AI Assistant (Initial Menu)
+              </div>
+              "Welcome to Africa's Talking Voice AI. Please tell us what you would like to do, or select from the menu. We are listening."
+            </div>
+          </div>
+        </div>
+
+        <!-- Simulated Voice Speech Input Bar -->
+        <form class="speech-sim-bar" id="speechSimForm">
+          <span style="font-size: 0.85rem;">🎙️</span>
+          <input type="text" id="simSpeechInput" class="speech-sim-input" placeholder="Type what the caller says (e.g. 'I want to check my account balance')..." required>
+          <button type="submit" class="btn-primary" style="padding: 0.5rem 0.9rem; font-size: 0.78rem;">
+            <span>Speak to AI</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Real-time Event Feed Panel -->
+      <div class="glass-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>📡</span> Live Protocol Event Stream
+            <span class="badge-tag" id="totalEventsCount">0</span>
+          </div>
+          <div>
+            <button type="button" class="btn-secondary" id="btnClearLogs" style="padding: 0.3rem 0.7rem; font-size: 0.72rem;">
+              Clear Feed
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="event-feed-container" id="eventFeed">
+            <div style="text-align: center; color: var(--text-muted); padding: 2rem 1rem;">
+              Awaiting HTTP POST callbacks from Africa's Talking gateway...<br>
+              <small style="opacity: 0.7;">(Configure your AT Voice callback URL to point to this server)</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Sessions Table Panel -->
+      <div class="glass-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>🗂️</span> Active Call Sessions
+            <span class="badge-tag" id="activeSessionCount">0</span>
+          </div>
+        </div>
+        <div class="panel-body" style="padding: 0;">
+          <div class="session-table-wrapper">
+            <table class="session-table">
+              <thead>
+                <tr>
+                  <th>Session ID</th>
+                  <th>Direction</th>
+                  <th>Caller</th>
+                  <th>Destination</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="activeSessionsTable">
+                <tr>
+                  <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                    No active Africa's Talking call sessions
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         COLUMN 3: IVR ENGINE & XML BUILDER
+         ========================================== -->
+    <section class="column-right" aria-label="Engine Settings and XML Builder">
+
+      <!-- IVR Mode Selector Panel -->
+      <div class="glass-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>⚙️</span> IVR Response Mode
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="mode-selector-grid">
+            <div class="mode-card active" data-mode="ai_agent" id="modeAiAgent">
+              <div class="mode-icon">🧠</div>
+              <div class="mode-name">AI Agent</div>
+              <div class="mode-desc">Groq + ASR Loop</div>
+            </div>
+            <div class="mode-card" data-mode="interactive" id="modeInteractive">
+              <div class="mode-icon">🤖</div>
+              <div class="mode-name">Standard IVR</div>
+              <div class="mode-desc">DTMF Menu</div>
+            </div>
+            <div class="mode-card" data-mode="custom" id="modeCustom">
+              <div class="mode-icon">📝</div>
+              <div class="mode-name">Custom XML</div>
+              <div class="mode-desc">Static Template</div>
+            </div>
+            <div class="mode-card" data-mode="manual" id="modeManual">
+              <div class="mode-icon">👨‍💻</div>
+              <div class="mode-name">Operator</div>
+              <div class="mode-desc">Live Prompts</div>
+            </div>
+          </div>
+
+          <!-- XML Response Template Editor -->
+          <div class="form-group" style="margin-top: 0.5rem;">
+            <label for="customXmlEditor">Response XML (&lt;Response&gt;...&lt;/Response&gt;)</label>
+            <textarea id="customXmlEditor" class="xml-editor-area" spellcheck="false"></textarea>
+          </div>
+
+          <!-- Quick XML Snippets -->
+          <div class="snippet-pills">
+            <span class="snippet-tag" data-snippet="&lt;Say voice=&quot;en-US-Standard-C&quot;&gt;Thank you for calling.&lt;/Say&gt;">+ &lt;Say&gt;</span>
+            <span class="snippet-tag" data-snippet="&lt;GetDigits timeout=&quot;20&quot; finishOnKey=&quot;#&quot;&gt;&lt;Say&gt;Enter digits&lt;/Say&gt;&lt;/GetDigits&gt;">+ &lt;GetDigits&gt;</span>
+            <span class="snippet-tag" data-snippet="&lt;Play url=&quot;https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg&quot;/&gt;">+ &lt;Play&gt;</span>
+            <span class="snippet-tag" data-snippet="&lt;Dial phoneNumbers=&quot;+254711082999&quot; record=&quot;true&quot;/&gt;">+ &lt;Dial&gt;</span>
+            <span class="snippet-tag" data-snippet="&lt;Record finishOnKey=&quot;#&quot; maxLength=&quot;20&quot; playBeep=&quot;true&quot;/&gt;">+ &lt;Record&gt;</span>
+            <span class="snippet-tag" data-snippet="&lt;Reject/&gt;">+ &lt;Reject&gt;</span>
+          </div>
+
+          <div style="margin-top: 1rem; display: flex; justify-content: flex-end;">
+            <button type="button" class="btn-primary" id="btnSaveXmlSettings" style="width: 100%; justify-content: center;">
+              Save IVR Settings
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Integrated Services Memory Panel -->
+      <div class="glass-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>📚</span> AI Services Memory
+            <span class="badge-tag" id="servicesCountBadge" style="background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald);">5 Services</span>
+          </div>
+        </div>
+        <div class="panel-body" style="padding: 0.9rem 1.1rem;">
+          <div id="servicesListContainer" style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <!-- Dynamically populated from services-memory.json -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Environment & Configuration Status -->
+      <div class="glass-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>🔐</span> Environment &amp; AT Config
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="env-status-list">
+            <div class="env-row">
+              <span class="env-label">AI Model:</span>
+              <span class="env-value" id="envAiModel" style="color: #c084fc;">openai/gpt-oss-20b</span>
+            </div>
+            <div class="env-row">
+              <span class="env-label">ASR Engine:</span>
+              <span class="env-value" id="envAsrProvider" style="color: var(--accent-cyan);">Groq Whisper (Pluggable)</span>
+            </div>
+            <div class="env-row">
+              <span class="env-label">AT Username:</span>
+              <span class="env-value" id="envUsername">sandbox</span>
+            </div>
+            <div class="env-row">
+              <span class="env-label">AT Virtual Number:</span>
+              <span class="env-value" id="envPhone">+254711082000</span>
+            </div>
+            <div class="env-row">
+              <span class="env-label">AT API Key:</span>
+              <span class="env-value" id="envApiKeyStatus">Configured</span>
+            </div>
+          </div>
+          <p style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.85rem; line-height: 1.4;">
+            Credentials and Groq API keys are loaded securely from <code>.env</code>.
+          </p>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ==========================================
+       MODAL: OUTBOUND CALL DISPATCHER
+       ========================================== -->
+  <div class="modal-overlay" id="outboundModal" role="dialog" aria-modal="true" aria-labelledby="outboundModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="outboundModalTitle">Initiate Outbound Call</h3>
+        <button type="button" class="modal-close-btn" id="closeOutboundModal">&times;</button>
+      </div>
+      <form id="outboundForm">
+        <div class="modal-body">
+          <p style="font-size: 0.82rem; color: var(--text-secondary);">
+            Sends a call request to Africa's Talking API endpoint (<code>/call</code>).
+          </p>
+          <div class="form-group">
+            <label for="outboundTo">Recipient Number(s) (comma separated)</label>
+            <input type="text" id="outboundTo" class="form-input" placeholder="+254712345678" required>
+          </div>
+          <div class="form-group">
+            <label for="outboundFrom">From (Your Africa's Talking Number)</label>
+            <input type="text" id="outboundFrom" class="form-input" placeholder="+254711082000">
+          </div>
+          <div class="form-group">
+            <label for="outboundSayText">Call Action Prompt (Optional &lt;Say&gt;)</label>
+            <input type="text" id="outboundSayText" class="form-input" placeholder="Hello, this is a call from Africa's Talking Voice Simulator.">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btnCancelOutbound">Cancel</button>
+          <button type="submit" class="btn-primary" id="btnSubmitOutbound">Launch Call</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: SYNTHETIC WEBHOOK SIMULATOR
+       ========================================== -->
+  <div class="modal-overlay" id="simModal" role="dialog" aria-modal="true" aria-labelledby="simModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="simModalTitle">Simulate Inbound AT Webhook</h3>
+        <button type="button" class="modal-close-btn" id="closeSimModal">&times;</button>
+      </div>
+      <form id="simForm">
+        <div class="modal-body">
+          <p style="font-size: 0.82rem; color: var(--text-secondary);">
+            Incorporate a synthetic Africa's Talking POST payload to verify IVR transitions and phone reactions locally.
+          </p>
+          <div class="form-group">
+            <label for="simCallerNumber">Caller Number</label>
+            <input type="text" id="simCallerNumber" class="form-input" value="+254712345678" required>
+          </div>
+          <div class="form-group">
+            <label for="simDestinationNumber">Destination Number</label>
+            <input type="text" id="simDestinationNumber" class="form-input" value="+254711082000" required>
+          </div>
+          <div class="form-group">
+            <label for="simDtmfDigits">DTMF Digits (e.g. 1, 2, 3, 0)</label>
+            <input type="text" id="simDtmfDigits" class="form-input" placeholder="Leave empty for voice call">
+          </div>
+          <div class="form-group">
+            <label for="simSpeech">Simulated Caller Speech (Speech $\to$ AI)</label>
+            <input type="text" id="simSpeech" class="form-input" placeholder="e.g. 'I want to check my account balance'">
+          </div>
+          <div class="form-group">
+            <label for="simDirection">Direction</label>
+            <select id="simDirection" class="form-input">
+              <option value="Inbound">Inbound</option>
+              <option value="Outbound">Outbound</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="simIsActive">Session State</label>
+            <select id="simIsActive" class="form-input">
+              <option value="1">1 (Active Call)</option>
+              <option value="0">0 (Finalized / Hangup)</option>
+            </select>
+          </div>
+          <input type="hidden" id="simSessionId" value="">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btnCancelSim">Cancel</button>
+          <button type="submit" class="btn-primary" id="btnSubmitSim">Inject Webhook</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: OPERATOR MANUAL DISPATCH
+       ========================================== -->
+  <div class="modal-overlay" id="operatorModal" role="dialog" aria-modal="true" aria-labelledby="operatorModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="operatorModalTitle">🚨 Live Operator Action Required</h3>
+        <span class="badge-tag" id="operatorTimer" style="background: rgba(245, 158, 11, 0.2); color: var(--accent-amber);">8s</span>
+      </div>
+      <div class="modal-body">
+        <p id="operatorPromptText" style="font-size: 0.85rem; color: #cbd5e1;"></p>
+        <div class="form-group">
+          <label for="operatorXmlInput">Custom Response XML</label>
+          <textarea id="operatorXmlInput" class="xml-editor-area" style="height: 120px;">&lt;Response&gt;
+  &lt;Say voice="en-US-Standard-C"&gt;Hello, an agent has personally accepted your call. How may I assist you today?&lt;/Say&gt;
+&lt;/Response&gt;</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btnRejectOperatorCall" style="border-color: var(--accent-rose); color: var(--accent-rose);">
+          Reject Call
+        </button>
+        <button type="button" class="btn-primary" id="btnSubmitOperatorXml">
+          Dispatch Response
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: MTN MOMO LIVE SANDBOX TEST CONSOLE
+       ========================================== -->
+  <div class="modal-overlay" id="momoModal" role="dialog" aria-modal="true" aria-labelledby="momoModalTitle">
+    <div class="modal-card" style="max-width: 680px; width: 92%;">
+      <div class="modal-header">
+        <h3 id="momoModalTitle">💛 MTN MoMo Sandbox Live Test (No Mocks)</h3>
+        <button type="button" class="modal-close-btn" id="closeMomoModal">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+        <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1rem;">
+          Executes direct, live HTTP requests against the official <strong>MTN MoMo Developer Sandbox API</strong> using your registered credentials.
+        </p>
+
+        <!-- MoMo Operations Tabs -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 1.2rem;">
+          <button type="button" class="btn-secondary momo-tab-btn active" data-tab="kyc" style="padding: 0.45rem 0.5rem; font-size: 0.75rem; justify-content: center;">
+            🔍 1. Verify KYC
+          </button>
+          <button type="button" class="btn-secondary momo-tab-btn" data-tab="balance" style="padding: 0.45rem 0.5rem; font-size: 0.75rem; justify-content: center;">
+            💰 2. Balance
+          </button>
+          <button type="button" class="btn-secondary momo-tab-btn" data-tab="transfer" style="padding: 0.45rem 0.5rem; font-size: 0.75rem; justify-content: center;">
+            🚀 3. Send Money
+          </button>
+          <button type="button" class="btn-secondary momo-tab-btn" data-tab="cashout" style="padding: 0.45rem 0.5rem; font-size: 0.75rem; justify-content: center;">
+            🏧 4. Cash Out
+          </button>
+        </div>
+
+        <!-- Tab 1: KYC / Basic User Info -->
+        <div id="momoTabKyc" class="momo-tab-pane">
+          <div class="form-group">
+            <label for="momoKycPhone">Phone Number to Look Up (Ghana MSISDN)</label>
+            <input type="text" id="momoKycPhone" class="form-input" value="0244123456" placeholder="0244123456 or 233244123456">
+            <small style="color: var(--text-muted); font-size: 0.72rem;">MTN Sandbox returns registered subscriber name and demographic data.</small>
+          </div>
+          <button type="button" class="btn-primary" id="btnRunMomoKyc" style="width: 100%; justify-content: center;">
+            🔍 Execute Live MoMo KYC Request
+          </button>
+        </div>
+
+        <!-- Tab 2: Balance -->
+        <div id="momoTabBalance" class="momo-tab-pane" style="display: none;">
+          <div class="form-group">
+            <label for="momoBalProduct">Product</label>
+            <select id="momoBalProduct" class="form-input">
+              <option value="disbursement">Disbursement Account Balance</option>
+              <option value="collection">Collection Account Balance</option>
+            </select>
+          </div>
+          <button type="button" class="btn-primary" id="btnRunMomoBalance" style="width: 100%; justify-content: center;">
+            💰 Query Live MoMo Balance
+          </button>
+        </div>
+
+        <!-- Tab 3: Send Money -->
+        <div id="momoTabTransfer" class="momo-tab-pane" style="display: none;">
+          <div class="form-group">
+            <label for="momoTransferPhone">Recipient Number</label>
+            <input type="text" id="momoTransferPhone" class="form-input" value="0244123456">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div class="form-group">
+              <label for="momoTransferAmount">Amount (GHS)</label>
+              <input type="number" id="momoTransferAmount" class="form-input" value="10.00" step="1">
+            </div>
+            <div class="form-group">
+              <label for="momoTransferRef">Reference Note</label>
+              <input type="text" id="momoTransferRef" class="form-input" value="Test Payment">
+            </div>
+          </div>
+          <button type="button" class="btn-primary" id="btnRunMomoTransfer" style="width: 100%; justify-content: center;">
+            🚀 Initiate Live MoMo Transfer
+          </button>
+        </div>
+
+        <!-- Tab 4: Cash Out -->
+        <div id="momoTabCashout" class="momo-tab-pane" style="display: none;">
+          <div class="form-group">
+            <label for="momoCashoutPhone">Customer Number</label>
+            <input type="text" id="momoCashoutPhone" class="form-input" value="0244123456">
+          </div>
+          <div class="form-group">
+            <label for="momoCashoutAmount">Amount (GHS)</label>
+            <input type="number" id="momoCashoutAmount" class="form-input" value="10.00" step="1">
+          </div>
+          <button type="button" class="btn-primary" id="btnRunMomoCashout" style="width: 100%; justify-content: center;">
+            🏧 Submit Request To Pay (Cash Out)
+          </button>
+        </div>
+
+        <!-- Live Response Screen -->
+        <div style="margin-top: 1.2rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <label style="font-size: 0.8rem; font-weight: 600; color: #f8fafc;">📡 Live MTN MoMo Sandbox Response (Untouched)</label>
+            <span id="momoResponseStatusBadge" class="badge-tag" style="background: rgba(100, 116, 139, 0.2); color: #94a3b8;">Awaiting Request</span>
+          </div>
+          <div id="momoFormattedResultBox" style="display: none; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); margin-bottom: 0.6rem;">
+            <div id="momoFormattedResultContent" style="font-size: 0.85rem; color: #e2e8f0;"></div>
+          </div>
+          <textarea id="momoRawResponseArea" class="xml-editor-area" style="height: 160px; font-family: monospace; font-size: 0.76rem;" readonly placeholder="Raw JSON response from MTN Sandbox will appear here..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btnCloseMomoModalBottom">Close Console</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- Scripts -->
+  <script src="js/audio.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

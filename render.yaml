@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: anidaso-voice-momo
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.0.0
+      - key: PORT
+        value: 10000
+      - key: PUBLIC_CALLBACK_URL
+        sync: false
+      - key: AT_USERNAME
+        sync: false
+      - key: AT_API_KEY
+        sync: false
+      - key: AT_PHONE_NUMBER
+        sync: false
+      - key: AT_VOICE_URL
+        value: https://voice.africastalking.com/call
+      - key: AT_TRANSFER_URL
+        value: https://voice.africastalking.com/callTransfer
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MOMO_BASE_URL
+        value: https://sandbox.momodeveloper.mtn.com
+      - key: MOMO_ENVIRONMENT
+        value: sandbox
+      - key: MOMO_CURRENCY
+        value: GHS
+      - key: MOMO_DISBURSEMENT_SUBSCRIPTION_KEY
+        sync: false
+      - key: MOMO_COLLECTION_SUBSCRIPTION_KEY
+        sync: false
+      - key: MOMO_API_USER_ID
+        sync: false
+      - key: MOMO_API_KEY
+        sync: false
+      - key: MOMO_CALLBACK_HOST
+        value: webhook.site

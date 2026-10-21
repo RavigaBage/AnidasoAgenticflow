@@ -1,0 +1,251 @@
+{
+  "title": "MTN Ghana Mobile Money (MoMo) IVR Script",
+  "version": "1.0.0",
+  "country": "Ghana",
+  "currency": "GHS (Ghana Cedis)",
+  "ussd_reference": "*170#",
+  "disclaimer": "This script is designed for your custom IVR system integration and represents a voice guidance and field sequence flow. Actual financial transactions require authorized MTN MoMo APIs and approval mechanisms.",
+  "menus": {
+    "language_support": {
+      "id": "language_support",
+      "prompt_id": "0001",
+      "spoken_text": "Welcome to the Okwankyerefopa services voice assistant. For English, press 1.for Twi press 2. To repeat this menu, press 9.",
+      "options": {
+        "1": {
+          "action": "navigate",
+          "target": "welcome_menu",
+          "label": "English"
+        },
+        "2": {
+          "action": "navigate",
+          "target": "welcome_menu",
+          "label": "Twi"
+        },
+        "9": {
+          "action": "repeat",
+          "target": "language_support",
+          "label": "Repeat menu"
+        }
+      }
+    },
+    "welcome_menu": {
+      "id": "welcome_menu",
+      "prompt_id": "001",
+      "spoken_text": "Welcome to the Okwankyerefopa services voice assistant. For MTN services, press 1.for Telecel press 2. To repeat this menu, press 9.",
+      "options": {
+        "1": {
+          "action": "navigate",
+          "target": "momo_main_menu",
+          "label": "MTN Services"
+        },
+        "9": {
+          "action": "repeat",
+          "target": "welcome_menu",
+          "label": "Repeat menu"
+        }
+      }
+    },
+    "momo_main_menu": {
+      "id": "momo_main_menu",
+      "prompt_id": "002",
+      "spoken_text": "Welcome to MTN Mobile Money. For account and balance enquiry, press 2. To send money, press 1. To withdraw money, press 3. To return to the previous menu, press 9.",
+      "routing": {
+        "1": {
+          "action": "start_flow",
+          "target": "script_a_send_money",
+          "label": "Send money"
+        },
+        "2": {
+          "action": "start_flow",
+          "target": "script_b_check_balance",
+          "label": "Account and balance enquiry"
+        },
+        "3": {
+          "action": "start_flow",
+          "target": "script_c_withdraw_money",
+          "label": "Withdraw money"
+        },
+        "9": {
+          "action": "navigate",
+          "target": "welcome_menu",
+          "label": "Previous menu"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "script_a_send_money": {
+      "id": "script_a_send_money",
+      "name": "Send Money",
+      "entry_key": "1",
+      "prompts": [
+        {
+          "step": 1,
+          "prompt_id": "SM-01",
+          "title": "Recipient type",
+          "spoken_text": "You have selected Send Money. To send money to an MTN Mobile Money user, press 1. To return to the main menu, press 9.",
+          "options": {
+            "1": "proceed_to_recipient_number",
+            "9": "momo_main_menu"
+          }
+        },
+        {
+          "step": 2,
+          "prompt_id": "SM-02",
+          "title": "Recipient number",
+          "spoken_text": "Please enter the recipient's mobile number using your keypad, followed by the hash key.",
+          "input_type": "digits",
+          "finish_on_key": "#",
+          "system_action": "Capture and validate mobile number format (e.g. 10 digits starting with 024, 054, 055, 059, etc.)"
+        },
+        {
+          "step": 3,
+          "prompt_id": "SM-03",
+          "title": "Confirm number",
+          "spoken_text": "The number you entered is [recipient number]. To confirm this number, press 1. To enter the number again, press 2.",
+          "options": {
+            "1": "proceed_to_amount",
+            "2": "repeat_recipient_number"
+          }
+        },
+        {
+          "step": 4,
+          "prompt_id": "SM-04",
+          "title": "Amount",
+          "spoken_text": "Please enter the amount you want to send in Ghana cedis, followed by the hash key.",
+          "input_type": "amount_currency",
+          "currency": "GHS",
+          "finish_on_key": "#",
+          "system_action": "Capture amount and validate positive numeric value"
+        },
+        {
+          "step": 5,
+          "prompt_id": "SM-05",
+          "title": "Reference",
+          "spoken_text": "Please enter a reference for this transaction, such as the recipient's name. Follow the instructions to finish.",
+          "input_type": "voice_or_digits",
+          "system_action": "Capture text/audio reference note"
+        },
+        {
+          "step": 6,
+          "prompt_id": "SM-06",
+          "title": "confirm_reference_info",
+          "spoken_text": "The number you entered is [number], the amount is [amount] Ghana Cedis, and the reference is [reference]. Do you confirm this transfer? To confirm this reference, press 1 or say confirm. To change the details, press 2.",
+          "options": {
+            "1": "proceed_to_transaction_security",
+            "2": "repeat_reference",
+            "0": "momo_main_menu",
+            "9": "language_support"
+          }
+        },
+        {
+          "step": 7,
+          "prompt_id": "SM-06",
+          "title": "Transaction security",
+          "spoken_text": "Your recipient's details and amount must be reviewed before you authorize the transaction. Please follow the official MTN MoMo authorization instructions on your phone. Never share your MoMo PIN with this voice assistant.",
+          "system_action": "Initiate secure external MoMo payment authorization prompt / USSD push"
+        }
+      ],
+      "security_note": "This script follows the documented MTN send-money field sequence. Actual money transfers require a legitimate MTN-authorized transaction mechanism. The voice assistant must not claim the transfer succeeded unless it receives verified transaction confirmation."
+    },
+    "script_b_check_balance": {
+      "id": "script_b_check_balance",
+      "name": "Account and Balance Enquiry",
+      "entry_key": "2",
+      "prompts": [
+        {
+          "step": 1,
+          "prompt_id": "CB-01",
+          "title": "Service introduction",
+          "spoken_text": "You have selected MTN Mobile Money balance enquiry. To check your MoMo balance, follow the instructions provided."
+        },
+        {
+          "step": 2,
+          "prompt_id": "CB-02",
+          "title": "Access instructions",
+          "spoken_text": "Please dial star one seven zero hash on your MTN phone. Select the My Wallet option, then follow the displayed instructions to check your balance. Enter your PIN only through the official MTN interface if requested."
+        },
+        {
+          "step": 3,
+          "prompt_id": "CB-03",
+          "title": "Completion",
+          "spoken_text": "Your balance will be displayed or communicated through the official MTN service. To return to the main menu, press 9. To end this call, press 0.",
+          "options": {
+            "9": "momo_main_menu",
+            "0": "end_call"
+          }
+        }
+      ],
+      "note": "This is a guidance-only flow. It does not retrieve a live wallet balance over the voice channel unless connected to an authorized MTN balance retrieval API."
+    },
+    "script_c_withdraw_money": {
+      "id": "script_c_withdraw_money",
+      "name": "Withdraw Money",
+      "entry_key": "3",
+      "prompts": [
+        {
+          "step": 1,
+          "prompt_id": "WD-01",
+          "title": "Service introduction",
+          "spoken_text": "You have selected MTN Mobile Money withdrawal. To withdraw cash, please visit an authorized MTN Mobile Money agent."
+        },
+        {
+          "step": 2,
+          "prompt_id": "WD-02",
+          "title": "Withdrawal instructions",
+          "spoken_text": "Tell the agent the amount you wish to withdraw. The agent will guide you through the cash-out process. Check that the amount and any applicable charges are correct."
+        },
+        {
+          "step": 3,
+          "prompt_id": "WD-03",
+          "title": "Authorization",
+          "spoken_text": "If MTN sends an authorization request to your phone, carefully review the transaction details. Only approve the request if you initiated the withdrawal and the details are correct. Enter your PIN only in the official MTN interface. Never disclose your PIN to an agent or this voice assistant."
+        },
+        {
+          "step": 4,
+          "prompt_id": "WD-04",
+          "title": "Completion",
+          "spoken_text": "Wait for the official transaction confirmation before accepting the cash. To return to the main menu, press 9. To end this call, press 0.",
+          "options": {
+            "9": "momo_main_menu",
+            "0": "end_call"
+          }
+        }
+      ],
+      "note": "This is a customer-guidance script for cash-out verification. Actual agent cash-out and authorization prompts must be confirmed against MTN's current procedure."
+    }
+  },
+  "routing_map": {
+    "incoming_call": "welcome_menu",
+    "welcome_menu": {
+      "press_1": "momo_main_menu",
+      "press_9": "welcome_menu"
+    },
+    "momo_main_menu": {
+      "press_1": "script_a_send_money (SM-01 to SM-06)",
+      "press_2": "script_b_check_balance (CB-01 to CB-03)",
+      "press_3": "script_c_withdraw_money (WD-01 to WD-04)",
+      "press_9": "welcome_menu"
+    }
+  },
+  "implementation_rules": [
+    "Never request or record caller's Mobile Money PIN over the voice line.",
+    "Do not represent balance checking or cash-out as completed unless verified by official backend transaction callbacks.",
+    "All monetary amounts must be handled in Ghana Cedis (GHS).",
+    "Always ask the user to confirm the reference details along with number and amount before initiating a transfer.",
+    "Gather all information provided by the caller in each turn and only prompt for missing fields."
+  ],
+  "required_data_send_money": [
+    "number",
+    "network",
+    "amount",
+    "reference",
+    "confirm"
+  ],
+  "required_data_check_balance": [
+    "number"
+  ],
+  "required_data_withdraw_money": [
+    "cash_out_confirmation"
+  ]
+}

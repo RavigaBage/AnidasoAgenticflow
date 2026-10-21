@@ -1,0 +1,42 @@
+{
+  "verify_kyc_mtn": {
+    "description": "Security & KYC Verification: Verify registered subscriber KYC details and account name on MTN Mobile Money for a phone number before confirming transfer",
+    "endpoint": "/api/momo/kyc",
+    "method": "POST",
+    "required_data": [
+      "number"
+    ],
+    "optional_data": [
+      "stated_name"
+    ]
+  },
+  "send_money_mtn": {
+    "description": "Trigger an MTN Ghana Mobile Money transfer once recipient number, network, amount, reference, registered KYC name, and explicit confirmation are all verified",
+    "endpoint": "/api/services/mtn/send-money",
+    "method": "POST",
+    "required_data": [
+      "number",
+      "network",
+      "amount",
+      "reference",
+      "registered_name",
+      "confirm"
+    ]
+  },
+  "check_balance_mtn": {
+    "description": "Trigger MTN Mobile Money balance enquiry guidance for caller number",
+    "endpoint": "/api/services/mtn/check-balance",
+    "method": "POST",
+    "required_data": [
+      "number"
+    ]
+  },
+  "cash_out_mtn": {
+    "description": "Initiate an MTN Mobile Money withdrawal / cash out guidance once confirmed",
+    "endpoint": "/api/services/mtn/cash-out",
+    "method": "POST",
+    "required_data": [
+      "cash_out_confirmation"
+    ]
+  }
+}
