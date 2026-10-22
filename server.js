@@ -3,6 +3,7 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const { WebSocketServer, WebSocket } = require('ws');
 const ivrEngine = require('./ivr-engine');
 const atService = require('./africastalking-api');
@@ -19,7 +20,7 @@ const PORT = process.env.PORT || 3000;
 // Africa's Talking expects a fast XML response. If an AI turn (e.g. a Groq
 // rate-limit retry) exceeds this budget, we answer with a keep-alive XML so
 // the call does not time out / hang up in production.
-const VOICE_WEBHOOK_TIMEOUT_MS = parseInt(process.env.VOICE_WEBHOOK_TIMEOUT_MS || '12000', 10);
+const VOICE_WEBHOOK_TIMEOUT_MS = parseInt(process.env.VOICE_WEBHOOK_TIMEOUT_MS || '11000', 10);
 
 // Enable trust proxy for Render reverse proxy headers (X-Forwarded-Proto, etc.)
 app.set('trust proxy', 1);
@@ -169,7 +170,7 @@ async function handleVoiceCallback(req, res) {
 
   try {
     // Process event through IVR Engine with AI Agent loop
-    const { session, xml, actionSummary, transcript, aiReply, actionExecuted } = await ivrEngine.processEvent(
+    const { session, xml, actionSummary, transcript, aiReply, actionExecuted, latencyBreakdown } = await ivrEngine.processEvent(
       payload,
       (sessionId, pendingPayload) => {
         broadcast('OPERATOR_PROMPT_REQUIRED', {
@@ -196,7 +197,7 @@ async function handleVoiceCallback(req, res) {
 
     const executionTimeMs = Date.now() - startTime;
 
-    // Broadcast our outgoing XML response and AI transcript to simulator
+    // Broadcast our outgoing XML response, latency profiler breakdown, and AI transcript to simulator
     broadcast('AT_XML_RESPONSE', {
       sessionId: session.sessionId,
       xml,
@@ -205,6 +206,7 @@ async function handleVoiceCallback(req, res) {
       aiReply,
       actionExecuted,
       executionTimeMs,
+      latencyBreakdown,
       session
     });
 
@@ -268,6 +270,26 @@ app.get('/api/services', (req, res) => {
     success: true,
     data: aiAgent.getServicesMemory()
   });
+});
+
+// Get Voice Latency & Streaming Investigation Report (JSON or Download)
+app.get('/api/investigation-report', (req, res) => {
+  const reportPath = path.join(__dirname, 'VOICE_LATENCY_AND_STREAMING_INVESTIGATION.md');
+  if (fs.existsSync(reportPath)) {
+    const content = fs.readFileSync(reportPath, 'utf8');
+    return res.json({ success: true, filename: 'VOICE_LATENCY_AND_STREAMING_INVESTIGATION.md', content });
+  }
+  return res.status(404).json({ success: false, error: 'Investigation report file not found.' });
+});
+
+app.get('/api/investigation-report/download', (req, res) => {
+  const reportPath = path.join(__dirname, 'VOICE_LATENCY_AND_STREAMING_INVESTIGATION.md');
+  if (fs.existsSync(reportPath)) {
+    res.setHeader('Content-Disposition', 'attachment; filename="VOICE_LATENCY_AND_STREAMING_INVESTIGATION.md"');
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    return res.sendFile(reportPath);
+  }
+  return res.status(404).send('Investigation report file not found.');
 });
 
 // Update Services Memory

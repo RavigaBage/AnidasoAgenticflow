@@ -139,6 +139,13 @@ async function postForm(url, fields) {
       !dash2.data.dashboard.activeSessions.some(s => s.sessionId === sessionId));
     check('Completed session preserved in recentHistory',
       dash2.data.dashboard.recentHistory.some(s => s.sessionId === sessionId));
+
+    console.log('\n[7] Voice latency investigation report endpoint');
+    const reportRes = await fetch(`${BASE}/api/investigation-report`);
+    const reportJson = await reportRes.json();
+    check('GET /api/investigation-report returns 200 and markdown content', reportRes.status === 200 && reportJson.success === true && reportJson.content.includes('Voice Latency'));
+    const downloadRes = await fetch(`${BASE}/api/investigation-report/download`);
+    check('GET /api/investigation-report/download returns attachment', downloadRes.status === 200 && (downloadRes.headers.get('content-disposition') || '').includes('attachment'));
   } catch (err) {
     failures++;
     console.error('\n[smoke] Unexpected failure:', err);

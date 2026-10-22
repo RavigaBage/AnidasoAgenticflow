@@ -196,7 +196,9 @@ class IvrEngine {
         xml: aiResponseData.xml,
         actionSummary: aiResponseData.summary,
         transcript: aiResponseData.transcript,
-        aiReply: aiResponseData.aiReply
+        aiReply: aiResponseData.aiReply,
+        actionExecuted: aiResponseData.actionExecuted,
+        latencyBreakdown: aiResponseData.latencyBreakdown
       };
     }
 
@@ -211,8 +213,13 @@ class IvrEngine {
    * Handle Conversational Voice AI Flow
    */
   async handleAiAgentTurn(session, recordingUrl, dtmfDigits, simulatedSpeech, onAiProgress) {
+    const turnStartMs = Date.now();
     const callbackUrl = process.env.PUBLIC_CALLBACK_URL || '';
     const callbackAttr = callbackUrl ? ` callbackUrl="${escapeXml(callbackUrl)}"` : '';
+
+    // Quick-win telecom parameters: 2s silence timeout shaves 3s off every turn!
+    const recordTimeout = process.env.AT_RECORD_TIMEOUT || '2';
+    const recordMaxLength = process.env.AT_RECORD_MAX_LENGTH || '12';
 
     // Turn 0: Call just started. Greet with MTN script menu and begin recording user voice response
     if (session.step === 0 && !recordingUrl && !dtmfDigits && !simulatedSpeech) {
@@ -225,21 +232,35 @@ class IvrEngine {
 
       const xml =
         `<Response>
-  <Record finishOnKey="#" maxLength="12" timeout="5" trimSilence="true" playBeep="true"${callbackAttr}>
+  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
     ${promptTag}
   </Record>
 </Response>`;
 
+      const totalTurnMs = Date.now() - turnStartMs;
       return {
         xml,
         summary: 'Voice AI Greeting & MTN Menu (<Record> listening for choice or speech)',
         transcript: null,
-        aiReply: null
+        aiReply: null,
+        actionExecuted: null,
+        latencyBreakdown: {
+          turnIndex: 0,
+          sessionId: session.sessionId,
+          downloadMs: 0,
+          audioBytes: 0,
+          sttMs: 0,
+          llmMs: 0,
+          toolMs: 0,
+          totalTurnMs,
+          targetSubTwoSeconds: true
+        }
       };
     }
 
     // Turn 1+: Process caller speech or keypad response
     let userSpeech = '';
+    let asrMetrics = null;
 
     if (simulatedSpeech) {
       userSpeech = simulatedSpeech;
@@ -248,7 +269,14 @@ class IvrEngine {
       if (typeof onAiProgress === 'function') {
         onAiProgress(session.sessionId, { stage: 'TRANSCRIBING', recordingUrl });
       }
-      userSpeech = await transcriptionService.transcribeAudioFromUrl(recordingUrl);
+      const asrResult = await transcriptionService.transcribeAudioFromUrl(recordingUrl, { includeMetrics: true });
+      if (typeof asrResult === 'object' && asrResult.transcript !== undefined) {
+        userSpeech = asrResult.transcript;
+        asrMetrics = asrResult.metrics;
+      } else {
+        userSpeech = asrResult;
+      }
+
       if (dtmfDigits) {
         const cleanDigits = String(dtmfDigits).replace(/#/g, '').trim();
         if (cleanDigits) {
@@ -287,6 +315,7 @@ class IvrEngine {
     const agentResult = await aiAgent.generateVoiceReply(session.sessionId, userSpeech, callContext);
     const aiReply = typeof agentResult === 'object' && agentResult.reply ? agentResult.reply : agentResult;
     const actionExecuted = typeof agentResult === 'object' ? agentResult.actionExecuted : null;
+    const agentMetrics = typeof agentResult === 'object' ? agentResult.metrics : null;
 
     console.log(`\n💬 [AI Spoken Reply Turn ${session.step}]: "${aiReply}"`);
     if (actionExecuted) {
@@ -315,17 +344,44 @@ class IvrEngine {
 
     // 3. Return XML to speak the AI answer back to caller and keep listening
     const xml = `<Response>
-  <Record finishOnKey="#" maxLength="12" timeout="5" trimSilence="true" playBeep="false"${callbackAttr}>
+  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="false"${callbackAttr}>
     <Say voice="en-US-Standard-C">${escapeXml(aiReply)}</Say>
   </Record>
 </Response>`;
+
+    const totalTurnMs = Date.now() - turnStartMs;
+    const latencyBreakdown = {
+      turnIndex: session.step,
+      sessionId: session.sessionId,
+      downloadMs: asrMetrics?.downloadDurationMs || 0,
+      audioBytes: asrMetrics?.audioBytes || 0,
+      sttMs: asrMetrics?.sttDurationMs || 0,
+      llmMs: agentMetrics?.llmDurationMs || 0,
+      toolMs: agentMetrics?.toolExecutionMs || 0,
+      totalTurnMs,
+      targetSubTwoSeconds: totalTurnMs < 2000
+    };
+
+    console.log(`\n======================================================`);
+    console.log(`⏱️  [VOICE PIPELINE LATENCY PROFILER] Turn ${session.step}`);
+    console.log(`------------------------------------------------------`);
+    console.log(`1. Audio Download    : ${(latencyBreakdown.downloadMs).toString().padStart(5)} ms (${latencyBreakdown.audioBytes} bytes)`);
+    console.log(`2. Groq Whisper (STT): ${(latencyBreakdown.sttMs).toString().padStart(5)} ms`);
+    console.log(`3. Groq LLM Agent    : ${(latencyBreakdown.llmMs).toString().padStart(5)} ms`);
+    if (latencyBreakdown.toolMs > 0) {
+      console.log(`4. MoMo Tool Action  : ${(latencyBreakdown.toolMs).toString().padStart(5)} ms`);
+    }
+    console.log(`------------------------------------------------------`);
+    console.log(`⚡ TOTAL TURN TIME   : ${(totalTurnMs).toString().padStart(5)} ms ${totalTurnMs < 2000 ? '✅ [SUB-2S TARGET MET]' : '⚠️ [OVER 2S BUDGET]'}`);
+    console.log(`======================================================\n`);
 
     return {
       xml,
       summary: actionExecuted ? `⚡ Executed [${actionExecuted.name}]: "${userSpeech}"` : `AI Response to "${userSpeech}"`,
       transcript: userSpeech,
       aiReply,
-      actionExecuted
+      actionExecuted,
+      latencyBreakdown
     };
   }
 

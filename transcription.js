@@ -35,11 +35,32 @@ class TranscriptionService {
    * @param {string} recordingUrl Public URL to the recorded audio (.mp3 / .wav)
    * @returns {Promise<string>} Transcribed text
    */
-  async transcribeAudioFromUrl(recordingUrl) {
+  /**
+   * Main entry point to transcribe an audio recording from Africa's Talking.
+   * Supports an options object to return timing metrics alongside the transcript.
+   * 
+   * @param {string} recordingUrl Public URL to the recorded audio (.mp3 / .wav)
+   * @param {object} [options] { includeMetrics: boolean }
+   * @returns {Promise<string|{transcript: string, metrics: object}>}
+   */
+  async transcribeAudioFromUrl(recordingUrl, options = {}) {
     this.reloadConfig();
+    const startTime = Date.now();
+
+    const metrics = {
+      downloadStartMs: startTime,
+      downloadDurationMs: 0,
+      audioBytes: 0,
+      sttDurationMs: 0,
+      totalDurationMs: 0,
+      attempts: 0,
+      provider: this.provider,
+      model: this.whisperModel
+    };
 
     if (!recordingUrl) {
-      return '';
+      metrics.totalDurationMs = Date.now() - startTime;
+      return options.includeMetrics ? { transcript: '', metrics } : '';
     }
 
     // Africa's Talking appends a trailing 'T' to the filename (e.g. hashT.mp3) during interim turn callbacks,
@@ -60,17 +81,19 @@ class TranscriptionService {
 
     let audioBuffer = null;
     let lastError = null;
-    const maxAttempts = 4;
-    const delays = [500, 800, 1200];
+    const maxAttempts = 3;
+    const delays = [250, 500]; // Lean backoff delays: audio is usually ready in < 500ms
 
+    const downloadStart = Date.now();
     for (let i = 0; i < maxAttempts; i++) {
       const attempt = i + 1;
+      metrics.attempts = attempt;
       for (const url of urlCandidates) {
         try {
           console.log(`📥 [ASR Download] Attempt ${attempt}/${maxAttempts}: Fetching ${url} ...`);
           const audioResponse = await axios.get(url, {
             responseType: 'arraybuffer',
-            timeout: 10000,
+            timeout: 4000,
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               'Accept': 'audio/*, */*'
@@ -78,7 +101,9 @@ class TranscriptionService {
           });
           if (audioResponse.status === 200 && audioResponse.data && audioResponse.data.length > 0) {
             audioBuffer = Buffer.from(audioResponse.data);
-            console.log(`✅ [ASR Download] Succeeded on attempt ${attempt}: Received ${audioBuffer.length} bytes from ${url}`);
+            metrics.audioBytes = audioBuffer.length;
+            metrics.downloadDurationMs = Date.now() - downloadStart;
+            console.log(`✅ [ASR Download] Succeeded on attempt ${attempt}: Received ${audioBuffer.length} bytes in ${metrics.downloadDurationMs}ms`);
             break;
           }
         } catch (err) {
@@ -89,18 +114,30 @@ class TranscriptionService {
       if (audioBuffer) break;
 
       if (i < delays.length) {
-        console.log(`⏳ [ASR Download] Audio file not ready on AT storage yet. Pausing ${delays[i]}ms before attempt ${attempt + 1}...`);
+        console.log(`⏳ [ASR Download] Pausing ${delays[i]}ms before attempt ${attempt + 1}...`);
         await new Promise(r => setTimeout(r, delays[i]));
       }
     }
 
-    if (audioBuffer) {
-      console.log(`🎙️ [ASR Transcribing] Sending ${audioBuffer.length} bytes to Groq Whisper (${this.whisperModel})...`);
-      return await this.transcribeBuffer(audioBuffer, 'recording.mp3');
+    if (!audioBuffer) {
+      metrics.downloadDurationMs = Date.now() - downloadStart;
+      metrics.totalDurationMs = Date.now() - startTime;
+      console.warn(`❌ [ASR Download Failed] Could not fetch audio after ${maxAttempts} attempts (${lastError?.message || 'Empty response'}).`);
+      const fallback = 'User spoken message from recording';
+      return options.includeMetrics ? { transcript: fallback, metrics } : fallback;
     }
 
-    console.warn(`❌ [ASR Download Failed] Could not fetch audio after ${maxAttempts} attempts (${lastError?.message || 'Empty response'}). Using fallback.`);
-    return `User spoken message from recording`;
+    // 2. Transcribe buffer
+    const sttStart = Date.now();
+    console.log(`🎙️ [ASR Transcribing] Sending ${audioBuffer.length} bytes to Groq Whisper (${this.whisperModel})...`);
+    const transcript = await this.transcribeBuffer(audioBuffer, 'recording.mp3');
+    metrics.sttDurationMs = Date.now() - sttStart;
+    metrics.totalDurationMs = Date.now() - startTime;
+
+    if (options.includeMetrics) {
+      return { transcript, metrics };
+    }
+    return transcript;
   }
 
   /**
@@ -118,7 +155,7 @@ class TranscriptionService {
   }
 
   /**
-   * Transcribe using Groq Cloud Whisper API
+   * Transcribe using Groq Cloud Whisper API with 429 rate limit awareness
    * POST https://api.groq.com/openai/v1/audio/transcriptions
    */
   async transcribeWithGroqWhisper(audioBuffer, filename) {
@@ -127,39 +164,47 @@ class TranscriptionService {
       return 'Customer inquiry regarding account services';
     }
 
-    try {
-      // Create FormData using native modern Node.js FormData and Blob
-      const formData = new FormData();
-      const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
-      formData.append('file', audioBlob, filename);
-      formData.append('model', this.whisperModel);
-      formData.append('language', 'en');
-      formData.append('temperature', '0');
-      formData.append('response_format', 'json');
+    const maxRetries = 1;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const formData = new FormData();
+        const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+        formData.append('file', audioBlob, filename);
+        formData.append('model', this.whisperModel);
+        formData.append('language', 'en');
+        formData.append('temperature', '0');
+        formData.append('response_format', 'json');
 
-      const response = await axios.post(
-        'https://api.groq.com/openai/v1/audio/transcriptions',
-        formData,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.groqApiKey}`,
-            // Let axios set the boundary automatically with native FormData
-            'Content-Type': 'multipart/form-data'
-          },
-          timeout: 20000
+        const response = await axios.post(
+          'https://api.groq.com/openai/v1/audio/transcriptions',
+          formData,
+          {
+            headers: {
+              'Authorization': `Bearer ${this.groqApiKey}`,
+              'Content-Type': 'multipart/form-data'
+            },
+            timeout: 8000
+          }
+        );
+
+        const transcript = response.data?.text?.trim();
+        console.log(`\n======================================================`);
+        console.log(`🎙️ [ASR TRANSCRIPTION SUCCESS]`);
+        console.log(`Model      : ${this.whisperModel}`);
+        console.log(`Transcript : "${transcript}"`);
+        console.log(`======================================================\n`);
+        return transcript || 'No speech detected';
+      } catch (error) {
+        if (error.response?.status === 429 && attempt < maxRetries) {
+          const retryHeader = error.response.headers?.['retry-after'];
+          const waitSeconds = retryHeader ? Math.min(parseFloat(retryHeader) || 1.5, 2.5) : 1.5;
+          console.warn(`[ASR Groq Whisper] ⏳ 429 rate limit. Waiting ${waitSeconds}s before single retry...`);
+          await new Promise(r => setTimeout(r, waitSeconds * 1000));
+          continue;
         }
-      );
-
-      const transcript = response.data?.text?.trim();
-      console.log(`\n======================================================`);
-      console.log(`🎙️ [ASR TRANSCRIPTION SUCCESS]`);
-      console.log(`Model      : ${this.whisperModel}`);
-      console.log(`Transcript : "${transcript}"`);
-      console.log(`======================================================\n`);
-      return transcript || 'No speech detected';
-    } catch (error) {
-      console.error(`❌ [ASR Groq Whisper Error]: Status: ${error.response?.status} - ${JSON.stringify(error.response?.data || error.message)}`);
-      return 'I would like to check my account options';
+        console.error(`❌ [ASR Groq Whisper Error]: Status: ${error.response?.status} - ${JSON.stringify(error.response?.data || error.message)}`);
+        return 'I would like to check my account options';
+      }
     }
   }
 

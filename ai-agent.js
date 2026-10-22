@@ -239,8 +239,10 @@ SESSION CONTEXT GUIDELINES:
    - You are STRICTLY FORBIDDEN from executing "send_money_mtn" before the caller says "yes" to your final approval question.
    - If caller says "no", "wrong person", or "cancel", immediately reply: "Transfer cancelled. Please provide the correct recipient phone number." and do NOT execute the transfer.
 
-6. ZERO MONOLOGUE LEAKAGE:
-   - Output ONLY the concise spoken sentence for the caller. NEVER speak internal chain-of-thought, instructions, or monologue.
+6. ZERO MONOLOGUE LEAKAGE & VOICE LATENCY BREVITY:
+   - Output ONLY 1 or 2 concise spoken sentences for the caller (strictly under 30 words).
+   - NEVER speak internal chain-of-thought, instructions, or monologue.
+   - Live phone callers need immediate, short, natural responses.
 7. Once this call ends, this memory is automatically wiped clean.
 ==================================================`;
 
@@ -572,9 +574,9 @@ VOICE FORMAT:
 
   /**
    * Send completion request to Groq with automatic 429 rate limit backoff.
-   * Backoff is capped (8s, 2 retries) so live voice turns stay within the
-   * Africa's Talking webhook latency window — the caller hears a graceful
-   * fallback instead of a call-timeout silence.
+   * Backoff honors the HTTP 'retry-after' header and is capped to a strict
+   * maximum (3.0s, max 2 retries) so live voice turns stay within the
+   * Africa's Talking webhook latency window and the caller never suffers minutes of silence.
    */
   async callGroq(payload, retries = 2) {
     const headers = {
@@ -583,14 +585,25 @@ VOICE FORMAT:
     };
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        return await axios.post(this.apiUrl, payload, { headers, timeout: 20000 });
+        return await axios.post(this.apiUrl, payload, { headers, timeout: 8000 });
       } catch (err) {
         if (err.response?.status === 429 && attempt < retries) {
+          const retryHeader = err.response.headers?.['retry-after'];
           const errMsg = err.response?.data?.error?.message || '';
           const match = errMsg.match(/try again in (\d+(?:\.\d+)?)s/i);
-          const waitSeconds = match ? parseFloat(match[1]) + 1.0 : 4.0;
-          console.warn(`[AI Agent] ⏳ Groq rate limit reached (attempt ${attempt + 1}/${retries}). Waiting ${waitSeconds.toFixed(1)}s before retrying...`);
-          await new Promise(r => setTimeout(r, Math.min(waitSeconds * 1000, 8000)));
+
+          let waitSeconds = 2.0;
+          if (retryHeader) {
+            const parsed = parseFloat(retryHeader);
+            if (!isNaN(parsed) && parsed > 0) {
+              waitSeconds = Math.min(parsed, 3.0);
+            }
+          } else if (match) {
+            waitSeconds = Math.min(parseFloat(match[1]) + 0.5, 3.0);
+          }
+
+          console.warn(`[AI Agent] ⏳ Groq 429 rate limit (attempt ${attempt + 1}/${retries}). Header retry-after: ${retryHeader || 'none'} -> Waiting ${waitSeconds.toFixed(1)}s before retry...`);
+          await new Promise(r => setTimeout(r, waitSeconds * 1000));
           continue;
         }
         throw err;
@@ -599,16 +612,24 @@ VOICE FORMAT:
   }
 
   /**
-   * Process user speech, let the agent reason autonomously, and execute actions when triggered
+   * Process user speech, let the agent reason autonomously, and execute actions when triggered.
+   * Returns reply, actionExecuted, and high-resolution latency metrics.
    */
   async generateVoiceReply(sessionId, userTranscript, callContext = {}) {
     this.reloadConfig();
+    const startTime = Date.now();
+    let toolExecutionMs = 0;
 
     if (!this.apiKey) {
       console.warn('[AI Agent] No GROQ_API_KEY found in .env');
       return {
         reply: `I received your request: "${userTranscript}". How else may I assist you today?`,
-        actionExecuted: null
+        actionExecuted: null,
+        metrics: {
+          llmDurationMs: 0,
+          toolExecutionMs: 0,
+          totalDurationMs: Date.now() - startTime
+        }
       };
     }
 
@@ -634,6 +655,7 @@ VOICE FORMAT:
 
     try {
       // 1. Send conversation + tools to the LLM for agentic reasoning
+      const firstCallStart = Date.now();
       const response = await this.callGroq({
         model: this.model,
         messages: sessionMem.llmMessages,
@@ -644,6 +666,7 @@ VOICE FORMAT:
         reasoning_format: 'hidden',
         max_tokens: 180
       });
+      let llmDurationMs = Date.now() - firstCallStart;
 
       const choice = response.data?.choices?.[0];
       const message = choice?.message;
@@ -663,7 +686,9 @@ VOICE FORMAT:
         console.log(`[AI Agent] ⚡ Agent Reasoned Action: ${actionName} with params:`, actionParams);
 
         // Execute action through action-executor (live MTN MoMo sandbox API)
+        const toolStart = Date.now();
         const actionResult = await actionExecutor.execute(actionName, actionParams, sessionId);
+        toolExecutionMs = Date.now() - toolStart;
 
         // Record action in session memory
         sessionMem.recordAction(actionName, actionParams, actionResult);
@@ -690,6 +715,7 @@ VOICE FORMAT:
         // 3. Second turn: Let the AI generate the final spoken response incorporating the action result
         let finalVoiceReply = '';
         try {
+          const secondCallStart = Date.now();
           const followUpResponse = await this.callGroq({
             model: this.model,
             messages: sessionMem.llmMessages,
@@ -698,6 +724,7 @@ VOICE FORMAT:
             reasoning_format: 'hidden',
             max_tokens: 150
           });
+          llmDurationMs += (Date.now() - secondCallStart);
           finalVoiceReply = followUpResponse.data?.choices?.[0]?.message?.content?.trim();
         } catch (followUpErr) {
           console.warn('[AI Agent] Follow-up spoken response note:', followUpErr.response?.data?.error?.message || followUpErr.message);
@@ -727,6 +754,11 @@ VOICE FORMAT:
             name: actionName,
             params: actionParams,
             result: actionResult
+          },
+          metrics: {
+            llmDurationMs,
+            toolExecutionMs,
+            totalDurationMs: Date.now() - startTime
           }
         };
       }
@@ -751,7 +783,12 @@ VOICE FORMAT:
 
       return {
         reply: cleanVoiceReply,
-        actionExecuted: null
+        actionExecuted: null,
+        metrics: {
+          llmDurationMs,
+          toolExecutionMs: 0,
+          totalDurationMs: Date.now() - startTime
+        }
       };
 
     } catch (error) {
@@ -762,7 +799,12 @@ VOICE FORMAT:
       sessionMem.recordTurn(userTranscript, fallbackReply, null);
       return {
         reply: fallbackReply,
-        actionExecuted: null
+        actionExecuted: null,
+        metrics: {
+          llmDurationMs: Date.now() - startTime,
+          toolExecutionMs: 0,
+          totalDurationMs: Date.now() - startTime
+        }
       };
     }
   }
