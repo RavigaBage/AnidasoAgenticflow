@@ -10,6 +10,7 @@ const atService = require('./africastalking-api');
 const aiAgent = require('./ai-agent');
 const transcriptionService = require('./transcription');
 const momoService = require('./momo-api');
+const hciLabService = require('./hci-lab-service');
 
 const app = express();
 const server = http.createServer(app);
@@ -57,7 +58,8 @@ wss.on('connection', (ws) => {
       aiConfig: aiAgent.getConfigSummary(),
       asrConfig: transcriptionService.getConfigSummary(),
       servicesMemory: aiAgent.getServicesMemory(),
-      momoConfig: momoService.getConfigSummary()
+      momoConfig: momoService.getConfigSummary(),
+      hciLabQuota: hciLabService.getQuotaStatus()
     }
   }));
 
@@ -311,6 +313,15 @@ app.get('/api/call-report/:sessionId', (req, res) => {
     return res.json({ success: true, report });
   }
   return res.status(404).json({ success: false, error: 'Session report not found.' });
+});
+
+// University of Ghana HCI Lab Speech API Quota & Circuit Breaker Status
+app.get('/api/hci-lab/quota', (req, res) => {
+  res.json({
+    success: true,
+    quota: hciLabService.getQuotaStatus(),
+    targetPresentationDate: '2026-10-24'
+  });
 });
 
 // Update Services Memory

@@ -1,10 +1,8 @@
-/**
- * Twi Language Routing & UG HCI Lab ASR Test
- */
-
+process.env.NODE_ENV = 'test';
 require('dotenv').config();
 const ivrEngine = require('../ivr-engine');
 const transcription = require('../transcription');
+const hciLab = require('../hci-lab-service');
 
 async function testTwiFlow() {
   console.log('🧪 [TEST] Starting Twi Language Flow & UG HCI Lab ASR tests...\n');

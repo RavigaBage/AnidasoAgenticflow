@@ -8,6 +8,7 @@
 
 require('dotenv').config();
 const axios = require('axios');
+const hciLabService = require('./hci-lab-service');
 
 class TranscriptionService {
   constructor() {
@@ -33,7 +34,8 @@ class TranscriptionService {
       whisperModel: this.whisperModel,
       keySource: this.keySource,
       isConfigured: Boolean(this.groqApiKey),
-      ugHciLabConfigured: Boolean(this.ugHciLabApiKey)
+      ugHciLabConfigured: Boolean(this.ugHciLabApiKey),
+      hciLabQuota: hciLabService.getQuotaStatus()
     };
   }
 
@@ -201,40 +203,23 @@ class TranscriptionService {
   /**
    * Transcribe audio using University of Ghana HCI Lab Speech API
    * Specialized for Ghanaian languages (Akan / Twi).
+   * Backed by Quota Defense Circuit Breaker and Whisper fallback.
    * POST https://lab-subscription-platform.vercel.app/api/v1/asr
    */
   async transcribeWithUgHciLab(audioBuffer, filename = 'recording.mp3') {
-    if (!this.ugHciLabApiKey) {
-      console.warn('[ASR Service] No UG_HCI_LAB_API_KEY found in .env');
-      return '';
+    const result = await hciLabService.transcribeAudio(audioBuffer, filename);
+    if (result && result.success && result.transcript) {
+      return result.transcript;
     }
 
-    try {
-      const endpoint = `${this.ugHciLabUrl.replace(/\/$/, '')}/api/v1/asr`;
-      const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
-      const formData = new FormData();
-      formData.append('file', blob, filename);
-      formData.append('language', 'twi');
-
-      console.log(`🎙️ [ASR UG HCI Lab] Sending ${audioBuffer.length} bytes to ${endpoint}...`);
-      const response = await axios.post(endpoint, formData, {
-        headers: {
-          'Authorization': `Bearer ${this.ugHciLabApiKey}`
-        },
-        timeout: 10000
-      });
-
-      const transcript = (response.data?.transcription || response.data?.text || '').trim();
-      console.log(`\n======================================================`);
-      console.log(`🎙️ [ASR UG HCI LAB SUCCESS]`);
-      console.log(`Language   : Twi (Akan)`);
-      console.log(`Transcript : "${transcript}"`);
-      console.log(`======================================================\n`);
-      return transcript;
-    } catch (error) {
-      console.error(`❌ [ASR UG HCI Lab Error]: Status: ${error.response?.status} - ${JSON.stringify(error.response?.data || error.message)}`);
-      return '';
+    if (result && result.circuitBreaker) {
+      console.warn('[ASR Service] 🛡️ HCI Lab Quota Circuit Breaker active. Falling back to Groq Whisper with Akan vocabulary.');
+    } else {
+      console.warn('[ASR Service] ⚠️ HCI Lab ASR returned empty or failed. Falling back to Groq Whisper.');
     }
+
+    // Graceful fallback to Whisper so caller is never hung up on
+    return await this.transcribeWithGroqWhisper(audioBuffer, filename);
   }
 
   /**

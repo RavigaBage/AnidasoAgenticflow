@@ -54,7 +54,7 @@ async function postForm(url, fields) {
 (async () => {
   console.log('\n[smoke] Booting server on port', PORT, '...');
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), DASHBOARD_API_KEY: TEST_API_KEY },
+    env: { ...process.env, PORT: String(PORT), DASHBOARD_API_KEY: TEST_API_KEY, NODE_ENV: 'test' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let serverLog = '';
@@ -151,6 +151,13 @@ async function postForm(url, fields) {
     const callReportRes = await fetch(`${BASE}/api/call-report/latest`);
     const callReportJson = await callReportRes.json();
     check('GET /api/call-report/latest returns 200 and report payload', callReportRes.status === 200 && callReportJson.success === true);
+
+    console.log('\n[9] UG HCI Lab Quota Defense Blueprint endpoint');
+    const hciQuotaRes = await fetch(`${BASE}/api/hci-lab/quota`);
+    const hciQuotaJson = await hciQuotaRes.json();
+    check('GET /api/hci-lab/quota returns 200 and quota status', hciQuotaRes.status === 200 && hciQuotaJson.success === true && hciQuotaJson.quota?.dailyAsr !== undefined);
+    check('ASR safety limit is enforced at 8', hciQuotaJson.quota?.dailyAsr?.safetyLimit === 8);
+    check('TTS safety limit is enforced at 12', hciQuotaJson.quota?.dailyTts?.safetyLimit === 12);
 
     const aiAgentMod = require('../ai-agent');
     const asrMod = require('../transcription');

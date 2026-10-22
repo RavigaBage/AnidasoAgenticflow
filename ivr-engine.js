@@ -5,6 +5,7 @@
 
 const aiAgent = require('./ai-agent');
 const transcriptionService = require('./transcription');
+const hciLabService = require('./hci-lab-service');
 
 /**
  * Escape XML-special characters so caller/AI-controlled text can be safely
@@ -314,9 +315,19 @@ class IvrEngine {
 
       const twiGreeting = "Akwaaba ba Okwankyerefopa MTN Mobile Money. Sɛ worepɛ sɛ womane sika a, ka sɛ mane sika anaa mia baako. Sɛ worepɛ sɛ wohwɛ wo sika a, ka sɛ hwɛ sika anaa mia mmienu. Sɛ worepɛ sɛ woyi sika a, ka sɛ yi sika anaa mia mmiɛnsa. Yɛretie wo.";
 
+      let twiPromptTag = `<Say voice="en-US-Standard-C">${escapeXml(twiGreeting)}</Say>`;
+      try {
+        const synth = await hciLabService.synthesizeSpeech(twiGreeting, callbackUrl);
+        if (synth && synth.audioUrl) {
+          twiPromptTag = `<Play url="${escapeXml(synth.audioUrl)}"/>`;
+        }
+      } catch (err) {
+        console.warn('[IVR ENGINE] Error synthesizing Twi greeting:', err.message);
+      }
+
       const xml = `<Response>
   <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
-    <Say voice="en-US-Standard-C">${escapeXml(twiGreeting)}</Say>
+    ${twiPromptTag}
   </Record>
 </Response>`;
 
@@ -446,9 +457,21 @@ class IvrEngine {
     }
 
     // 3. Return XML to speak the AI answer back to caller and keep listening
+    let spokenOutputTag = `<Say voice="en-US-Standard-C">${escapeXml(aiReply)}</Say>`;
+    if (session.language === 'twi') {
+      try {
+        const synth = await hciLabService.synthesizeSpeech(aiReply, callbackUrl);
+        if (synth && synth.audioUrl) {
+          spokenOutputTag = `<Play url="${escapeXml(synth.audioUrl)}"/>`;
+        }
+      } catch (err) {
+        console.warn('[IVR ENGINE] Error synthesizing Twi audio:', err.message);
+      }
+    }
+
     const xml = `<Response>
   <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="false"${callbackAttr}>
-    <Say voice="en-US-Standard-C">${escapeXml(aiReply)}</Say>
+    ${spokenOutputTag}
   </Record>
 </Response>`;
 
