@@ -217,9 +217,11 @@ class IvrEngine {
     const callbackUrl = process.env.PUBLIC_CALLBACK_URL || '';
     const callbackAttr = callbackUrl ? ` callbackUrl="${escapeXml(callbackUrl)}"` : '';
 
-    // Quick-win telecom parameters: 3.5s silence timeout gives callers natural breathing room
-    const recordTimeout = process.env.AT_RECORD_TIMEOUT || '3.5';
-    const recordMaxLength = process.env.AT_RECORD_MAX_LENGTH || '12';
+    // Quick-win telecom parameters: Africa's Talking requires an integer for timeout (e.g. 3)
+    const rawTimeout = process.env.AT_RECORD_TIMEOUT || '3';
+    const parsedTimeout = Math.round(parseFloat(rawTimeout)) || 3;
+    const recordTimeout = String(Math.max(1, parsedTimeout));
+    const recordMaxLength = String(Math.max(1, Math.round(parseFloat(process.env.AT_RECORD_MAX_LENGTH || '12')) || 12));
 
     // Turn 0: Call just started. Greet with MTN script menu and begin recording user voice response
     if (session.step === 0 && !recordingUrl && !dtmfDigits && !simulatedSpeech) {
