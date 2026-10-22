@@ -233,19 +233,22 @@ class IvrEngine {
     // Initial Turn / Call Startup: Greet caller with Language Selection Menu
     // Handles both Africa's Talking "Ringing" and initial "Active" webhooks before caller has responded.
     if (!hasCallerInput) {
-      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. For English, press 1 or say English. For Twi, press 2 or say Twi. Please press 1 or 2, or speak your choice now.</Say>`;
+      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. For English, press 1. For Twi, press 2.</Say>`;
 
       // If user has a pre-recorded audio file menu configured in .env
       if (this.audioMenuUrl) {
         promptTag = `<Play url="${escapeXml(this.audioMenuUrl)}"/>`;
       }
 
-      // Pillar 4: Dual-mode DTMF Keypad Entry via <GetDigits> with automatic <Record> voice fallback
+      // Pillar 4: Dual-mode language selection.
+      // 1. If caller presses 1 or 2: <GetDigits> captures it instantly (0 ASR quota).
+      // 2. If caller does not press a key: falls through to <Record> and prompts them to speak.
       const xml = `<Response>
-  <GetDigits timeout="6" numDigits="1" finishOnKey="#"${callbackAttr}>
+  <GetDigits timeout="4" numDigits="1" finishOnKey="#"${callbackAttr}>
     ${promptTag}
   </GetDigits>
   <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
+    <Say voice="en-US-Standard-C">Please say English or Twi after the beep.</Say>
   </Record>
 </Response>`;
 
@@ -342,11 +345,10 @@ class IvrEngine {
         console.warn('[IVR ENGINE] Error synthesizing Twi greeting:', err.message);
       }
 
+      // Turn 1 Conversational Mode: Play native Twi greeting and immediately beep and record caller's spoken request
       const xml = `<Response>
-  <GetDigits timeout="5" numDigits="1" finishOnKey="#"${callbackAttr}>
-    ${twiPromptTag}
-  </GetDigits>
   <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
+    ${twiPromptTag}
   </Record>
 </Response>`;
 
@@ -489,10 +491,8 @@ class IvrEngine {
     }
 
     const xml = `<Response>
-  <GetDigits timeout="4" finishOnKey="#"${callbackAttr}>
+  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="false"${callbackAttr}>
     ${spokenOutputTag}
-  </GetDigits>
-  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
   </Record>
 </Response>`;
 
