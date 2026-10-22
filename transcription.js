@@ -219,14 +219,14 @@ class TranscriptionService {
     }
 
     // Graceful fallback to Whisper so caller is never hung up on
-    return await this.transcribeWithGroqWhisper(audioBuffer, filename);
+    return await this.transcribeWithGroqWhisper(audioBuffer, filename, 'twi');
   }
 
   /**
    * Transcribe using Groq Cloud Whisper API with 429 rate limit awareness
    * POST https://api.groq.com/openai/v1/audio/transcriptions
    */
-  async transcribeWithGroqWhisper(audioBuffer, filename) {
+  async transcribeWithGroqWhisper(audioBuffer, filename, language = 'en') {
     if (!this.groqApiKey) {
       console.warn('[ASR Service] No GROQ_API_KEY available for Groq Whisper transcription.');
       return '';
@@ -239,9 +239,15 @@ class TranscriptionService {
         const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
         formData.append('file', audioBlob, filename);
         formData.append('model', this.whisperModel);
-        formData.append('language', 'en');
-        // Pin vocabulary prompt so Whisper recognizes Ghanaian MoMo terms instead of mishearing
-        formData.append('prompt', 'MTN Mobile Money Ghana MoMo, cedis, Telecel, AirtelTigo, send money, cash out, balance enquiry, numbers');
+
+        if (language === 'twi' || language === 'tw') {
+          // Akan Twi prompt so Whisper does not mangle Akan phrases into English
+          formData.append('prompt', 'Akan Twi, MTN Mobile Money Ghana, mepɛ sɛ memane sika, hwɛ me sika, yi sika, sika, nɔmba, aduonum, Kwame, Mensah, cedis');
+        } else {
+          formData.append('language', 'en');
+          formData.append('prompt', 'MTN Mobile Money Ghana MoMo, cedis, Telecel, AirtelTigo, send money, cash out, balance enquiry, numbers');
+        }
+
         formData.append('temperature', '0');
         formData.append('response_format', 'json');
 
