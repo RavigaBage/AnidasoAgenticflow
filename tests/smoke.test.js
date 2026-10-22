@@ -146,6 +146,16 @@ async function postForm(url, fields) {
     check('GET /api/investigation-report returns 200 and markdown content', reportRes.status === 200 && reportJson.success === true && reportJson.content.includes('Voice Latency'));
     const downloadRes = await fetch(`${BASE}/api/investigation-report/download`);
     check('GET /api/investigation-report/download returns attachment', downloadRes.status === 200 && (downloadRes.headers.get('content-disposition') || '').includes('attachment'));
+
+    console.log('\n[8] Real-time live call diagnostic report endpoint & dual Groq keys');
+    const callReportRes = await fetch(`${BASE}/api/call-report/latest`);
+    const callReportJson = await callReportRes.json();
+    check('GET /api/call-report/latest returns 200 and report payload', callReportRes.status === 200 && callReportJson.success === true);
+
+    const aiAgentMod = require('../ai-agent');
+    const asrMod = require('../transcription');
+    check('aiAgent.getConfigSummary() returns valid config', typeof aiAgentMod.getConfigSummary === 'function' && Boolean(aiAgentMod.getConfigSummary().model));
+    check('transcription.getConfigSummary() returns valid config', typeof asrMod.getConfigSummary === 'function' && Boolean(asrMod.getConfigSummary().whisperModel));
   } catch (err) {
     failures++;
     console.error('\n[smoke] Unexpected failure:', err);

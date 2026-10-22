@@ -299,23 +299,32 @@
   function processOutgoingXmlResponse(data) {
     const { sessionId, xml, actionSummary, executionTimeMs, session } = data;
 
+    const meta = {
+      'Session ID': sessionId,
+      'Action': actionSummary,
+      'Processing Time': `${executionTimeMs}ms`
+    };
+    if (data.latencyBreakdown) {
+      meta['Audio Download'] = `${data.latencyBreakdown.downloadMs}ms (${data.latencyBreakdown.audioBytes || 0}B)`;
+      meta['Whisper STT'] = `${data.latencyBreakdown.sttMs}ms`;
+      meta['Groq LLM'] = `${data.latencyBreakdown.llmMs}ms`;
+      if (data.latencyBreakdown.toolMs) meta['MoMo Action'] = `${data.latencyBreakdown.toolMs}ms`;
+      meta['Sub-2s Target'] = data.latencyBreakdown.targetSubTwoSeconds ? 'Passed' : 'Exceeded';
+    }
+
     // Add to event stream card
     appendLogItem({
       type: 'OUTGOING_RESPONSE',
       title: `Response to AT (${executionTimeMs}ms)`,
       badge: 'response',
       isSimulated: data.isSimulated,
-      meta: {
-        'Session ID': sessionId,
-        'Action': actionSummary,
-        'Processing Time': `${executionTimeMs}ms`
-      },
+      meta,
       code: xml
     });
 
     // If this turn contained speech transcription and AI response, append to dialogue thread
     if (data.transcript && data.aiReply) {
-      appendAiDialogueTurn(data.transcript, data.aiReply);
+      appendAiDialogueTurn(data.transcript, data.aiReply, data.latencyBreakdown);
     }
 
     // If an agentic action was triggered, display the action card
@@ -348,11 +357,30 @@
     }
   }
 
-  function appendAiDialogueTurn(userTranscript, aiReply) {
+  function appendAiDialogueTurn(userTranscript, aiReply, latencyBreakdown) {
     if (!els.aiDialogueThread) return;
     const turnDiv = document.createElement('div');
     turnDiv.className = 'dialogue-turn';
     const modelName = (serverConfig && serverConfig.model) ? serverConfig.model : 'openai/gpt-oss-20b';
+
+    let latencyHtml = '';
+    if (latencyBreakdown) {
+      const isPass = latencyBreakdown.targetSubTwoSeconds;
+      latencyHtml = `
+        <div class="turn-latency-report" style="margin-top: 6px; padding: 6px 10px; border-radius: 6px; background: rgba(15, 23, 42, 0.75); border: 1px solid ${isPass ? 'rgba(16, 185, 129, 0.35)' : 'rgba(234, 179, 8, 0.35)'}; font-size: 0.72rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+          <span style="font-weight: 700; color: ${isPass ? '#34d399' : '#fbbf24'};">
+            ⏱️ Turn: ${latencyBreakdown.totalTurnMs}ms
+          </span>
+          <span style="color: #94a3b8;">📥 Download: <strong>${latencyBreakdown.downloadMs}ms</strong></span>
+          <span style="color: #94a3b8;">🎙️ Whisper: <strong>${latencyBreakdown.sttMs}ms</strong></span>
+          <span style="color: #94a3b8;">🧠 Groq LLM: <strong>${latencyBreakdown.llmMs}ms</strong></span>
+          ${latencyBreakdown.toolMs ? `<span style="color: #fbbf24;">⚡ MoMo: <strong>${latencyBreakdown.toolMs}ms</strong></span>` : ''}
+          <span style="margin-left: auto; font-size: 0.68rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: ${isPass ? 'rgba(16, 185, 129, 0.2)' : 'rgba(234, 179, 8, 0.2)'}; color: ${isPass ? '#34d399' : '#fbbf24'};">
+            ${isPass ? '✅ SUB-2S TARGET MET' : '⚠️ OVER 2S BUDGET'}
+          </span>
+        </div>
+      `;
+    }
 
     turnDiv.innerHTML = `
       <div class="bubble-user">
@@ -366,6 +394,7 @@
           <span>🤖</span> Groq Voice AI (${escapeHtml(modelName)})
         </div>
         "${escapeHtml(aiReply)}"
+        ${latencyHtml}
       </div>
     `;
     els.aiDialogueThread.appendChild(turnDiv);

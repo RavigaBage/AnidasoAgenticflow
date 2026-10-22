@@ -292,6 +292,27 @@ app.get('/api/investigation-report/download', (req, res) => {
   return res.status(404).send('Investigation report file not found.');
 });
 
+// Real-Time Live Call Testing Diagnostic Report (latest or by sessionId)
+app.get('/api/call-report/latest', (req, res) => {
+  const report = ivrEngine.getLatestCallReport();
+  if (report) {
+    return res.json({ success: true, report });
+  }
+  return res.json({
+    success: true,
+    message: 'No calls recorded yet. Place a call to see real-time diagnostics.',
+    report: null
+  });
+});
+
+app.get('/api/call-report/:sessionId', (req, res) => {
+  const report = ivrEngine.getCallReport(req.params.sessionId);
+  if (report) {
+    return res.json({ success: true, report });
+  }
+  return res.status(404).json({ success: false, error: 'Session report not found.' });
+});
+
 // Update Services Memory
 app.post('/api/services', (req, res) => {
   try {

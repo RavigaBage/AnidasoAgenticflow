@@ -359,15 +359,22 @@ class IvrEngine {
       llmMs: agentMetrics?.llmDurationMs || 0,
       toolMs: agentMetrics?.toolExecutionMs || 0,
       totalTurnMs,
-      targetSubTwoSeconds: totalTurnMs < 2000
+      targetSubTwoSeconds: totalTurnMs < 2000,
+      keysUsed: {
+        audioWhisper: transcriptionService.keySource,
+        llmReasoning: aiAgent.keySource
+      }
     };
 
+    session.latencies = session.latencies || [];
+    session.latencies.push(latencyBreakdown);
+
     console.log(`\n======================================================`);
-    console.log(`⏱️  [VOICE PIPELINE LATENCY PROFILER] Turn ${session.step}`);
+    console.log(`⏱️  [VOICE PIPELINE LATENCY PROFILER] Turn ${session.step} (Session: ${session.sessionId})`);
     console.log(`------------------------------------------------------`);
     console.log(`1. Audio Download    : ${(latencyBreakdown.downloadMs).toString().padStart(5)} ms (${latencyBreakdown.audioBytes} bytes)`);
-    console.log(`2. Groq Whisper (STT): ${(latencyBreakdown.sttMs).toString().padStart(5)} ms`);
-    console.log(`3. Groq LLM Agent    : ${(latencyBreakdown.llmMs).toString().padStart(5)} ms`);
+    console.log(`2. Groq Whisper (STT): ${(latencyBreakdown.sttMs).toString().padStart(5)} ms [${transcriptionService.keySource || 'GROQ_TTS_KEY'}]`);
+    console.log(`3. Groq LLM Agent    : ${(latencyBreakdown.llmMs).toString().padStart(5)} ms [${aiAgent.keySource || 'GROQ_LLM_KEY'}]`);
     if (latencyBreakdown.toolMs > 0) {
       console.log(`4. MoMo Tool Action  : ${(latencyBreakdown.toolMs).toString().padStart(5)} ms`);
     }
@@ -505,6 +512,46 @@ class IvrEngine {
       return true;
     }
     return false;
+  }
+
+  getCallReport(sessionId) {
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      session = this.history.find(s => s.sessionId === sessionId);
+    }
+    if (!session) return null;
+
+    const latencies = session.latencies || [];
+    const avgLatencyMs = latencies.length > 0
+      ? Math.round(latencies.reduce((acc, l) => acc + (l.totalTurnMs || 0), 0) / latencies.length)
+      : 0;
+
+    return {
+      sessionId: session.sessionId,
+      callerNumber: session.callerNumber,
+      destinationNumber: session.destinationNumber,
+      direction: session.direction,
+      status: session.status || (session.isActive ? 'ACTIVE' : 'COMPLETED'),
+      startTime: session.startTime,
+      durationInSeconds: session.durationInSeconds,
+      turnsCount: session.step || latencies.length,
+      averageTurnLatencyMs: avgLatencyMs,
+      targetSubTwoSeconds: avgLatencyMs < 2000,
+      groqKeys: {
+        audioWhisperKey: transcriptionService.keySource,
+        llmReasoningKey: aiAgent.keySource
+      },
+      latencies,
+      conversation: session.conversation
+    };
+  }
+
+  getLatestCallReport() {
+    // If active session exists, get latest active
+    const active = Array.from(this.sessions.values()).pop();
+    if (active) return this.getCallReport(active.sessionId);
+    if (this.history.length > 0) return this.getCallReport(this.history[0].sessionId);
+    return null;
   }
 }
 

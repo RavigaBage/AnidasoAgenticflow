@@ -306,7 +306,9 @@ class AiAgent {
   }
 
   reloadConfig() {
-    this.apiKey = process.env.GROQ_API_KEY || '';
+    // Prioritize dedicated LLM reasoning key (GROQ_LLM_KEY), fallback to GROQ_API_KEY
+    this.apiKey = process.env.GROQ_LLM_KEY || process.env.GROQ_API_KEY || '';
+    this.keySource = process.env.GROQ_LLM_KEY ? 'GROQ_LLM_KEY (dedicated LLM)' : 'GROQ_API_KEY (shared)';
     this.model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
     this.apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
     this.servicesMemory = this.loadServicesMemory();
@@ -319,6 +321,15 @@ class AiAgent {
         sessionMem.llmMessages[0].content = sessionMem.buildSystemPrompt(this.systemPrompt);
       }
     }
+  }
+
+  getConfigSummary() {
+    this.reloadConfig();
+    return {
+      model: this.model,
+      keySource: this.keySource,
+      isConfigured: Boolean(this.apiKey)
+    };
   }
 
   loadServicesMemory() {
