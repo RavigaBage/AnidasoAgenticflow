@@ -206,12 +206,12 @@ class HciLabService {
     this.activeRequests++;
     try {
       const endpoint = `${this.baseUrl}/api/v1/asr`;
-      const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+      const mimeType = filename.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg';
+      const blob = new Blob([audioBuffer], { type: mimeType });
       const formData = new FormData();
       formData.append('file', blob, filename);
-      formData.append('language', 'twi');
 
-      console.log(`🎙️ [HCI Lab ASR] Sending ${audioBuffer.length} bytes to ${endpoint} (Call ${this.quota.dailyAsr + 1}/${this.SAFETY_LIMITS.MAX_DAILY_ASR} today)...`);
+      console.log(`🎙️ [HCI Lab ASR] Sending ${audioBuffer.length} bytes (${mimeType}) to ${endpoint} (Call ${this.quota.dailyAsr + 1}/${this.SAFETY_LIMITS.MAX_DAILY_ASR} today)...`);
       const response = await axios.post(endpoint, formData, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`

@@ -190,7 +190,11 @@ class IvrEngine {
     // AI Agent Mode (Featured: Audio Menu -> Record -> Transcribe -> Groq LLM -> Speak & Loop)
     if (this.mode === 'ai_agent') {
       const aiResponseData = await this.handleAiAgentTurn(session, recordingUrl, dtmfDigits, payload.simulatedSpeech, onAiProgress);
-      session.step++;
+      if (aiResponseData.isInitialGreeting) {
+        session.step = 1;
+      } else {
+        session.step++;
+      }
       session.lastXmlResponse = aiResponseData.xml;
       return {
         session,
@@ -224,26 +228,32 @@ class IvrEngine {
     const recordTimeout = String(Math.max(1, parsedTimeout));
     const recordMaxLength = String(Math.max(1, Math.round(parseFloat(process.env.AT_RECORD_MAX_LENGTH || '12')) || 12));
 
-    // Turn 0: Call just started. Greet with MTN script menu and begin recording user voice response
-    if (session.step === 0 && !recordingUrl && !dtmfDigits && !simulatedSpeech) {
-      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. For English, press 1 or say English. For Twi, press 2 or say Twi. To send money directly, press 1. Please speak your choice or press a key, followed by the hash key.</Say>`;
+    const hasCallerInput = Boolean(recordingUrl || dtmfDigits || simulatedSpeech);
+
+    // Initial Turn / Call Startup: Greet caller with Language Selection Menu
+    // Handles both Africa's Talking "Ringing" and initial "Active" webhooks before caller has responded.
+    if (!hasCallerInput) {
+      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. For English, press 1 or say English. For Twi, press 2 or say Twi. Please press 1 or 2, or speak your choice now.</Say>`;
 
       // If user has a pre-recorded audio file menu configured in .env
       if (this.audioMenuUrl) {
         promptTag = `<Play url="${escapeXml(this.audioMenuUrl)}"/>`;
       }
 
-      const xml =
-        `<Response>
-  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
+      // Pillar 4: Dual-mode DTMF Keypad Entry via <GetDigits> with automatic <Record> voice fallback
+      const xml = `<Response>
+  <GetDigits timeout="6" numDigits="1" finishOnKey="#"${callbackAttr}>
     ${promptTag}
+  </GetDigits>
+  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
   </Record>
 </Response>`;
 
       const totalTurnMs = Date.now() - turnStartMs;
       return {
         xml,
-        summary: 'Voice AI Greeting & Language Menu (<Record> listening for choice or speech)',
+        isInitialGreeting: true,
+        summary: 'Voice AI Greeting & Language Menu (<GetDigits> DTMF + <Record> Voice Fallback)',
         transcript: null,
         aiReply: null,
         actionExecuted: null,
@@ -304,11 +314,18 @@ class IvrEngine {
       userSpeech = '';
     }
 
-    // Language Selection Handling: If caller selected Twi (Keypad 2 or spoken "Twi")
+    // Language Selection Handling: If caller selected Twi (Keypad 2 or spoken Akan)
     const cleanDigits = dtmfDigits ? String(dtmfDigits).replace(/#/g, '').trim() : '';
-    const isTwiChosen = cleanDigits === '2' || /\b(twi|akan)\b/i.test(userSpeech);
+    const isTwiChosen = cleanDigits === '2' || cleanDigits.startsWith('2') || /\b(twi|akan|kasa|mepe|mepɛ|akwaaba|mane|sika)\b/i.test(userSpeech);
+    const isEnglishChosen = cleanDigits === '1' || /\b(english|brofo)\b/i.test(userSpeech);
 
-    if (isTwiChosen && session.language !== 'twi' && session.step <= 2) {
+    if (isEnglishChosen && session.language !== 'en') {
+      session.language = 'en';
+      session.asrProvider = 'groq';
+      console.log(`[IVR ENGINE] 🇬🇧 Caller selected ENGLISH! Switched ASR provider to Groq Whisper.`);
+    }
+
+    if (isTwiChosen && session.language !== 'twi') {
       session.language = 'twi';
       session.asrProvider = 'ug_hci';
       console.log(`[IVR ENGINE] 🇬🇭 Caller selected TWI! Switched ASR provider to UG_HCI_LAB_API_KEY.`);
