@@ -571,9 +571,12 @@ VOICE FORMAT:
   }
 
   /**
-   * Send completion request to Groq with automatic 429 rate limit backoff
+   * Send completion request to Groq with automatic 429 rate limit backoff.
+   * Backoff is capped (8s, 2 retries) so live voice turns stay within the
+   * Africa's Talking webhook latency window — the caller hears a graceful
+   * fallback instead of a call-timeout silence.
    */
-  async callGroq(payload, retries = 4) {
+  async callGroq(payload, retries = 2) {
     const headers = {
       'Authorization': `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json'
@@ -587,7 +590,7 @@ VOICE FORMAT:
           const match = errMsg.match(/try again in (\d+(?:\.\d+)?)s/i);
           const waitSeconds = match ? parseFloat(match[1]) + 1.0 : 4.0;
           console.warn(`[AI Agent] ⏳ Groq rate limit reached (attempt ${attempt + 1}/${retries}). Waiting ${waitSeconds.toFixed(1)}s before retrying...`);
-          await new Promise(r => setTimeout(r, Math.min(waitSeconds * 1000, 40000)));
+          await new Promise(r => setTimeout(r, Math.min(waitSeconds * 1000, 8000)));
           continue;
         }
         throw err;

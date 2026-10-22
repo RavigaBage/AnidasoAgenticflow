@@ -27,6 +27,10 @@ services:
         value: openai/gpt-oss-20b
       - key: GROQ_API_KEY
         sync: false
+      - key: DASHBOARD_API_KEY
+        sync: false
+      - key: VOICE_WEBHOOK_TIMEOUT_MS
+        value: "12000"
       - key: MOMO_BASE_URL
         value: https://sandbox.momodeveloper.mtn.com
       - key: MOMO_ENVIRONMENT

@@ -6,6 +6,19 @@
 const aiAgent = require('./ai-agent');
 const transcriptionService = require('./transcription');
 
+/**
+ * Escape XML-special characters so caller/AI-controlled text can be safely
+ * interpolated into Africa's Talking XML responses (& < > " ').
+ */
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 class IvrEngine {
   constructor() {
     this.sessions = new Map(); // sessionId -> sessionData
@@ -16,6 +29,35 @@ class IvrEngine {
 </Response>`;
     this.pendingCallbacks = new Map(); // sessionId -> { resolve, timer } for manual operator mode
     this.audioMenuUrl = process.env.AUDIO_MENU_URL || ''; // Optional URL to pre-recorded menu audio
+    this.totalSessionsCreated = 0;
+
+    // Periodically purge ended/abandoned sessions so this.sessions cannot grow without bound
+    this.sessionSweepTimer = setInterval(() => this.cleanupStaleSessions(), 10 * 60 * 1000);
+    if (typeof this.sessionSweepTimer.unref === 'function') this.sessionSweepTimer.unref();
+  }
+
+  /**
+   * Remove ended sessions from the active map (they remain in history) and
+   * expire long-abandoned active sessions (e.g. missed isActive=0 callbacks).
+   */
+  cleanupStaleSessions(maxIdleMs = 2 * 60 * 60 * 1000) {
+    const now = Date.now();
+    for (const [sessionId, session] of this.sessions.entries()) {
+      const idleMs = now - new Date(session.updatedAt).getTime();
+      if (!session.isActive || idleMs > maxIdleMs) {
+        if (!this.history.some(h => h.sessionId === sessionId)) {
+          this.history.unshift(session);
+          if (this.history.length > 50) this.history.pop();
+        }
+        if (session.isActive) {
+          session.isActive = false;
+          session.status = 'COMPLETED';
+          session.endTime = new Date().toISOString();
+          aiAgent.clearSession(sessionId);
+        }
+        this.sessions.delete(sessionId);
+      }
+    }
   }
 
   /**
@@ -56,6 +98,7 @@ class IvrEngine {
         cost: null
       };
       this.sessions.set(sessionId, session);
+      this.totalSessionsCreated++;
     }
 
     session.updatedAt = new Date().toISOString();
@@ -83,6 +126,8 @@ class IvrEngine {
         this.history.unshift(session);
         if (this.history.length > 50) this.history.pop();
       }
+      // Free memory: completed sessions live on in history, not the active map
+      this.sessions.delete(sessionId);
     }
 
     session.events.push({
@@ -167,7 +212,7 @@ class IvrEngine {
    */
   async handleAiAgentTurn(session, recordingUrl, dtmfDigits, simulatedSpeech, onAiProgress) {
     const callbackUrl = process.env.PUBLIC_CALLBACK_URL || '';
-    const callbackAttr = callbackUrl ? ` callbackUrl="${callbackUrl}"` : '';
+    const callbackAttr = callbackUrl ? ` callbackUrl="${escapeXml(callbackUrl)}"` : '';
 
     // Turn 0: Call just started. Greet with MTN script menu and begin recording user voice response
     if (session.step === 0 && !recordingUrl && !dtmfDigits && !simulatedSpeech) {
@@ -175,12 +220,12 @@ class IvrEngine {
 
       // If user has a pre-recorded audio file menu configured in .env
       if (this.audioMenuUrl) {
-        promptTag = `<Play url="${this.audioMenuUrl}"/>`;
+        promptTag = `<Play url="${escapeXml(this.audioMenuUrl)}"/>`;
       }
 
       const xml =
         `<Response>
-  <Record finishOnKey="#" maxLength="12" timeout="2" trimSilence="true" playBeep="true"${callbackAttr}>
+  <Record finishOnKey="#" maxLength="12" timeout="5" trimSilence="true" playBeep="true"${callbackAttr}>
     ${promptTag}
   </Record>
 </Response>`;
@@ -270,8 +315,8 @@ class IvrEngine {
 
     // 3. Return XML to speak the AI answer back to caller and keep listening
     const xml = `<Response>
-  <Record finishOnKey="#" maxLength="12" timeout="2" trimSilence="true" playBeep="false"${callbackAttr}>
-    <Say voice="en-US-Standard-C">${aiReply}</Say>
+  <Record finishOnKey="#" maxLength="12" timeout="5" trimSilence="true" playBeep="false"${callbackAttr}>
+    <Say voice="en-US-Standard-C">${escapeXml(aiReply)}</Say>
   </Record>
 </Response>`;
 
@@ -383,7 +428,7 @@ class IvrEngine {
       customXml: this.customXml,
       activeSessions: Array.from(this.sessions.values()).filter(s => s.isActive),
       recentHistory: this.history.slice(0, 20),
-      totalSessionsCount: this.sessions.size,
+      totalSessionsCount: this.totalSessionsCreated,
       pendingOperatorCount: this.pendingCallbacks.size,
       aiConfig: aiAgent.getConfigSummary(),
       asrConfig: transcriptionService.getConfigSummary()
@@ -400,6 +445,7 @@ class IvrEngine {
       if (!this.history.some(h => h.sessionId === sessionId)) {
         this.history.unshift(session);
       }
+      this.sessions.delete(sessionId);
       return true;
     }
     return false;

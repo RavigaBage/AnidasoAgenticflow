@@ -16,6 +16,11 @@ const wss = new WebSocketServer({ server });
 
 const PORT = process.env.PORT || 3000;
 
+// Africa's Talking expects a fast XML response. If an AI turn (e.g. a Groq
+// rate-limit retry) exceeds this budget, we answer with a keep-alive XML so
+// the call does not time out / hang up in production.
+const VOICE_WEBHOOK_TIMEOUT_MS = parseInt(process.env.VOICE_WEBHOOK_TIMEOUT_MS || '12000', 10);
+
 // Enable trust proxy for Render reverse proxy headers (X-Forwarded-Proto, etc.)
 app.set('trust proxy', 1);
 
@@ -88,6 +93,34 @@ aiAgent.onMemoryDiscarded = (sessionId, summary) => {
 };
 
 // ==========================================
+// AUTH GUARD FOR PAID / SENSITIVE ENDPOINTS
+// ==========================================
+
+/**
+ * Protects endpoints that trigger billable Africa's Talking calls or move money.
+ * - If DASHBOARD_API_KEY is set, clients must send it as the `x-api-key` header.
+ * - If it is NOT set, only loopback (localhost) clients are allowed, so a public
+ *   deployment cannot be abused to make paid calls on your account.
+ */
+function requireApiKey(req, res, next) {
+  const expectedKey = process.env.DASHBOARD_API_KEY || '';
+  const providedKey = req.get('x-api-key') || (req.query && req.query.apiKey) || '';
+
+  if (expectedKey) {
+    if (providedKey && providedKey === expectedKey) return next();
+    return res.status(401).json({ success: false, error: 'Unauthorized. Provide a valid x-api-key header.' });
+  }
+
+  const ip = req.ip || '';
+  const isLoopback = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  if (isLoopback) return next();
+  return res.status(401).json({
+    success: false,
+    error: 'Unauthorized. Set DASHBOARD_API_KEY on the server and pass it as the x-api-key header.'
+  });
+}
+
+// ==========================================
 // AFRICA'S TALKING WEBHOOK CALLBACK ENDPOINT
 // ==========================================
 async function handleVoiceCallback(req, res) {
@@ -113,6 +146,27 @@ async function handleVoiceCallback(req, res) {
     url: req.originalUrl
   });
 
+  let responded = false;
+
+  // Latency guard: respond with a keep-alive XML before AT times the webhook out
+  const latencyTimer = setTimeout(() => {
+    if (responded) return;
+    responded = true;
+    console.warn(`[AT VOICE CALLBACK] ⚠️ AI turn exceeded ${VOICE_WEBHOOK_TIMEOUT_MS}ms — sending keep-alive XML to prevent call timeout.`);
+
+    const keepAliveCallback = process.env.PUBLIC_CALLBACK_URL || '';
+    const keepAliveCallbackAttr = keepAliveCallback ? ` callbackUrl="${keepAliveCallback}"` : '';
+    const keepAliveXml = `<Response>
+  <Say voice="en-US-Standard-C">Sorry, that is taking a little longer than expected. Please repeat your request after the beep.</Say>
+  <Record finishOnKey="#" maxLength="12" timeout="5" trimSilence="true" playBeep="true"${keepAliveCallbackAttr}>
+    <Say voice="en-US-Standard-C">Please speak now.</Say>
+  </Record>
+</Response>`;
+
+    res.set('Content-Type', 'application/xml; charset=utf-8');
+    return res.status(200).send(keepAliveXml);
+  }, VOICE_WEBHOOK_TIMEOUT_MS);
+
   try {
     // Process event through IVR Engine with AI Agent loop
     const { session, xml, actionSummary, transcript, aiReply, actionExecuted } = await ivrEngine.processEvent(
@@ -132,6 +186,14 @@ async function handleVoiceCallback(req, res) {
       }
     );
 
+    if (responded) {
+      // Africa's Talking already received the keep-alive response; nothing more we can send
+      console.warn(`[AT VOICE CALLBACK] Late AI result for ${payload.sessionId} discarded (client already responded to).`);
+      return;
+    }
+    responded = true;
+    clearTimeout(latencyTimer);
+
     const executionTimeMs = Date.now() - startTime;
 
     // Broadcast our outgoing XML response and AI transcript to simulator
@@ -150,6 +212,12 @@ async function handleVoiceCallback(req, res) {
     res.set('Content-Type', 'application/xml; charset=utf-8');
     return res.status(200).send(xml);
   } catch (err) {
+    if (responded) {
+      console.error('[AT VOICE CALLBACK ERROR] (after keep-alive was already sent):', err);
+      return;
+    }
+    responded = true;
+    clearTimeout(latencyTimer);
     console.error('[AT VOICE CALLBACK ERROR]:', err);
     const fallbackXml = `<Response><Say>An internal error occurred. Please try again later.</Say></Response>`;
     res.set('Content-Type', 'application/xml; charset=utf-8');
@@ -237,7 +305,7 @@ app.post('/api/operator-action', (req, res) => {
 });
 
 // Trigger Outbound Call via Africa's Talking API
-app.post('/api/call', async (req, res) => {
+app.post('/api/call', requireApiKey, async (req, res) => {
   const { to, from, clientRequestId, callActions } = req.body;
 
   if (!to) {
@@ -254,7 +322,7 @@ app.post('/api/call', async (req, res) => {
 });
 
 // Trigger Call Transfer via Africa's Talking API
-app.post('/api/call-transfer', async (req, res) => {
+app.post('/api/call-transfer', requireApiKey, async (req, res) => {
   const { sessionId, phoneNumber, callLeg, holdMusicUrl } = req.body;
 
   if (!sessionId || !phoneNumber) {
@@ -283,7 +351,7 @@ app.get('/api/services/mtn/config', (req, res) => {
 });
 
 // MoMo Send Money / Transfer (Disbursement)
-app.post('/api/services/mtn/send-money', async (req, res) => {
+app.post('/api/services/mtn/send-money', requireApiKey, async (req, res) => {
   const { number, amount, reference, currency, network } = req.body;
   if (!number || !amount) {
     return res.status(400).json({ success: false, error: 'Recipient number and amount are required' });
@@ -341,7 +409,7 @@ app.post('/api/services/mtn/check-balance', async (req, res) => {
 });
 
 // MoMo Cash Out / Withdrawal (RequestToPay)
-app.post('/api/services/mtn/cash-out', async (req, res) => {
+app.post('/api/services/mtn/cash-out', requireApiKey, async (req, res) => {
   const { number, amount, note, cash_out_confirmation } = req.body;
   try {
     const result = await momoService.withdrawCash({

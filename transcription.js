@@ -168,9 +168,11 @@ class TranscriptionService {
    * (e.g. Deepgram, Google Cloud Speech, AssemblyAI, AWS Transcribe)
    */
   async transcribeWithCustomProvider(audioBuffer) {
-    console.log('[ASR Service] Custom ASR hook triggered.');
-    // TODO: Plug in chosen ASR SDK / REST API here
-    return 'Custom provider transcript placeholder';
+    // Fail loudly instead of returning a silent placeholder that would corrupt the AI dialog.
+    throw new Error(
+      'Custom ASR provider is not implemented. Set ASR_PROVIDER=groq with a valid GROQ_API_KEY, ' +
+      'or implement transcribeWithCustomProvider() in transcription.js with your chosen STT service.'
+    );
   }
 }
 

@@ -185,9 +185,11 @@ class ActionExecutor {
           statedName: stated_name || null,
           nameMatch,
           discrepancyWarning,
-          promptMessage: discrepancyWarning
-            ? `The phone number ${number} is registered to ${momoRes.subscriberName} on Mobile Money, not ${stated_name}.`
-            : `The phone number ${number} is officially registered to ${momoRes.subscriberName} on Mobile Money.`
+          promptMessage: !momoRes.success
+            ? `Mobile Money verification for ${number} failed. ${momoRes.promptMessage || 'No registration details could be retrieved for this number.'}`
+            : discrepancyWarning
+              ? `The phone number ${number} is registered to ${momoRes.subscriberName} on Mobile Money, not ${stated_name}.`
+              : `The phone number ${number} is officially registered to ${momoRes.subscriberName} on Mobile Money.`
         };
       }
 
@@ -243,6 +245,17 @@ class ActionExecutor {
 
       case 'cash_out_mtn': {
         const { amount, number, cash_out_confirmation } = params;
+
+        // SECURITY GUARD: never execute a withdrawal without explicit caller confirmation
+        if (!cash_out_confirmation) {
+          return {
+            success: false,
+            action: actionName,
+            error: 'Cash out was not confirmed by the caller. Please request explicit confirmation before executing a withdrawal.',
+            requiresConfirmation: true
+          };
+        }
+
         const momoRes = await momoService.withdrawCash({
           amount,
           number,

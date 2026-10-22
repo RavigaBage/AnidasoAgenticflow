@@ -20,7 +20,7 @@ class MtnMoMoService {
     this.baseUrl = process.env.MOMO_BASE_URL || 'https://sandbox.momodeveloper.mtn.com';
     this.environment = process.env.MOMO_TARGET_ENV || process.env.MOMO_ENVIRONMENT || 'sandbox';
     this.currency = process.env.MOMO_CURRENCY || 'GHS';
-    this.callbackHost = process.env.MOMO_CALLBACK_HOST || 'okwankyer-fo-pa.onrender.com';
+    this.callbackHost = process.env.MOMO_CALLBACK_HOST || 'webhook.site';
   }
 
   /**
@@ -509,6 +509,208 @@ class MtnMoMoService {
         referenceId,
         error: errorData,
         promptMessage: `Cash out request failed. MTN Sandbox returned: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`
+      };
+    }
+  }
+  // ==========================================
+  // TRANSACTION STATUS LOOKUPS
+  // ==========================================
+
+  /**
+   * Check status of a Disbursement (Send Money) transfer
+   * GET /disbursement/v1_0/transfer/{referenceId}
+   */
+  async getTransferStatus(referenceId, product = 'disbursement') {
+    this.reloadConfig();
+    const { subKey } = this.getProductCredentials(product);
+
+    try {
+      const token = await this.getAccessToken(product);
+      const url = `${this.baseUrl}/${product}/v1_0/transfer/${referenceId}`;
+
+      const response = await axios.get(url, {
+        headers: {
+          'X-Target-Environment': this.environment,
+          'Ocp-Apim-Subscription-Key': subKey,
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 15000
+      });
+
+      const data = response.data || {};
+      return {
+        success: true,
+        statusCode: response.status,
+        referenceId,
+        product,
+        status: data.status || 'UNKNOWN',
+        financialTransactionId: data.financialTransactionId || null,
+        amount: data.amount || null,
+        currency: data.currency || null,
+        payeeMsisdn: data.payee?.partyId || null,
+        rawResponse: data,
+        promptMessage: `Transfer ${referenceId} status: ${data.status || 'UNKNOWN'}.`
+      };
+    } catch (err) {
+      const status = err.response?.status || 500;
+      const errorData = err.response?.data || err.message;
+      return {
+        success: false,
+        statusCode: status,
+        referenceId,
+        product,
+        error: errorData,
+        promptMessage: `Could not retrieve transfer status for ${referenceId}. MTN MoMo returned: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`
+      };
+    }
+  }
+
+  /**
+   * Check status of a Collection (Request To Pay / Cash Out) transaction
+   * GET /collection/v1_0/requesttopay/{referenceId}
+   */
+  async getRequestToPayStatus(referenceId, product = 'collection') {
+    this.reloadConfig();
+    const { subKey } = this.getProductCredentials(product);
+
+    try {
+      const token = await this.getAccessToken(product);
+      const url = `${this.baseUrl}/${product}/v1_0/requesttopay/${referenceId}`;
+
+      const response = await axios.get(url, {
+        headers: {
+          'X-Target-Environment': this.environment,
+          'Ocp-Apim-Subscription-Key': subKey,
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 15000
+      });
+
+      const data = response.data || {};
+      return {
+        success: true,
+        statusCode: response.status,
+        referenceId,
+        product,
+        status: data.status || 'UNKNOWN',
+        financialTransactionId: data.financialTransactionId || null,
+        amount: data.amount || null,
+        currency: data.currency || null,
+        payerMsisdn: data.payer?.partyId || null,
+        rawResponse: data,
+        promptMessage: `Cash out request ${referenceId} status: ${data.status || 'UNKNOWN'}.`
+      };
+    } catch (err) {
+      const status = err.response?.status || 500;
+      const errorData = err.response?.data || err.message;
+      return {
+        success: false,
+        statusCode: status,
+        referenceId,
+        product,
+        error: errorData,
+        promptMessage: `Could not retrieve cash out status for ${referenceId}. MTN MoMo returned: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`
+      };
+    }
+  }
+  // ==========================================
+  // SANDBOX PROVISIONING (API USER & API KEY)
+  // ==========================================
+
+  /**
+   * Create a new sandbox API user
+   * POST /v1_0/apiuser  (headers: X-Reference-Id, body: { providerCallbackHost })
+   */
+  async createSandboxApiUser(referenceId = null, subscriptionKey = null) {
+    this.reloadConfig();
+    const subKey = subscriptionKey || process.env.MOMO_COLLECTION_SUBSCRIPTION_KEY || process.env.MOMO_SUBSCRIPTION_KEY || '';
+    const refId = referenceId || crypto.randomUUID();
+
+    if (!subKey) {
+      return {
+        success: false,
+        status: 400,
+        error: 'Missing MoMo subscription key. Provide one in the request body or set MOMO_*_SUBSCRIPTION_KEY in .env.'
+      };
+    }
+
+    try {
+      const url = `${this.baseUrl}/v1_0/apiuser`;
+      const response = await axios.post(
+        url,
+        { providerCallbackHost: this.callbackHost },
+        {
+          headers: {
+            'X-Reference-Id': refId,
+            'Ocp-Apim-Subscription-Key': subKey,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        }
+      );
+
+      return {
+        success: true,
+        status: response.status,
+        referenceId: refId,
+        providerCallbackHost: this.callbackHost,
+        message: `Sandbox API user created with reference ID ${refId}.`
+      };
+    } catch (err) {
+      const status = err.response?.status || 500;
+      const errorData = err.response?.data || err.message;
+      return {
+        success: false,
+        status,
+        referenceId: refId,
+        error: errorData,
+        message: `Failed to create sandbox API user. MTN MoMo returned: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`
+      };
+    }
+  }
+
+  /**
+   * Generate an API Key for a sandbox API user
+   * POST /v1_0/apiuser/{apiUserId}/apikey
+   */
+  async createSandboxApiKey(apiUserId, subscriptionKey = null) {
+    this.reloadConfig();
+    const subKey = subscriptionKey || process.env.MOMO_COLLECTION_SUBSCRIPTION_KEY || process.env.MOMO_SUBSCRIPTION_KEY || '';
+
+    if (!apiUserId || !subKey) {
+      return {
+        success: false,
+        status: 400,
+        error: 'apiUserId and a subscription key are required to generate a sandbox API key.'
+      };
+    }
+
+    try {
+      const url = `${this.baseUrl}/v1_0/apiuser/${apiUserId}/apikey`;
+      const response = await axios.post(url, {}, {
+        headers: {
+          'Ocp-Apim-Subscription-Key': subKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+
+      return {
+        success: true,
+        status: response.status,
+        apiUserId,
+        apiKey: response.data?.apiKey || null,
+        message: 'Sandbox API key generated. Store it securely — it cannot be retrieved again.'
+      };
+    } catch (err) {
+      const status = err.response?.status || 500;
+      const errorData = err.response?.data || err.message;
+      return {
+        success: false,
+        status,
+        apiUserId,
+        error: errorData,
+        message: `Failed to generate sandbox API key. MTN MoMo returned: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`
       };
     }
   }

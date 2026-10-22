@@ -14,6 +14,30 @@
   let serverConfig = {};
   let currentMode = 'interactive';
 
+  /**
+   * Auth header helper for endpoints protected by requireApiKey (outbound calls,
+   * MoMo money movement). The key is stored in sessionStorage only — never hardcoded.
+   * On first use against a protected endpoint, the user is prompted once.
+   */
+  function dashboardApiKey() {
+    let key = sessionStorage.getItem('dashboardApiKey') || '';
+    if (!key) {
+      key = window.prompt(
+        'This server protects paid endpoints (outbound calls / MoMo transactions).\n' +
+        'Enter the DASHBOARD_API_KEY configured on the server (leave blank for local development):'
+      ) || '';
+      sessionStorage.setItem('dashboardApiKey', key);
+    }
+    return key;
+  }
+
+  function authHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    const key = dashboardApiKey();
+    if (key) headers['x-api-key'] = key;
+    return headers;
+  }
+
   // DOM Elements
   const els = {
     connectionDot: document.getElementById('connectionDot'),
@@ -1021,7 +1045,7 @@
 
       fetch('/api/call', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ to, from, callActions })
       }).then(r => r.json()).then(res => {
         if (res.success) {
@@ -1143,7 +1167,7 @@
           els.btnRunMomoTransfer.textContent = '⏳ Submitting Live Transfer...';
           fetch('/api/services/mtn/send-money', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ number, amount, reference })
           })
             .then(r => r.json())
@@ -1170,7 +1194,7 @@
           els.btnRunMomoCashout.textContent = '⏳ Submitting Request To Pay...';
           fetch('/api/services/mtn/cash-out', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ number, amount })
           })
             .then(r => r.json())
