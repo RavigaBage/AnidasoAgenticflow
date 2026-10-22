@@ -343,8 +343,10 @@ class IvrEngine {
       }
 
       const xml = `<Response>
-  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
+  <GetDigits timeout="5" numDigits="1" finishOnKey="#"${callbackAttr}>
     ${twiPromptTag}
+  </GetDigits>
+  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
   </Record>
 </Response>`;
 
@@ -487,8 +489,10 @@ class IvrEngine {
     }
 
     const xml = `<Response>
-  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="false"${callbackAttr}>
+  <GetDigits timeout="4" finishOnKey="#"${callbackAttr}>
     ${spokenOutputTag}
+  </GetDigits>
+  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
   </Record>
 </Response>`;
 
