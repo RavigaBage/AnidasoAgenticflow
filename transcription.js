@@ -126,21 +126,51 @@ class TranscriptionService {
       metrics.downloadDurationMs = Date.now() - downloadStart;
       metrics.totalDurationMs = Date.now() - startTime;
       console.warn(`❌ [ASR Download Failed] Could not fetch audio after ${maxAttempts} attempts (${lastError?.message || 'Empty response'}).`);
-      const fallback = 'User spoken message from recording';
-      return options.includeMetrics ? { transcript: fallback, metrics } : fallback;
+      const fallback = '';
+      return options.includeMetrics ? { transcript: fallback, isSilence: true, metrics } : fallback;
+    }
+
+    // Silence Gate: Audio smaller than 5.5KB is < 2.5 seconds of silence/noise.
+    // Skipping Whisper saves tokens and avoids rate limits.
+    if (audioBuffer.length < 5500) {
+      metrics.downloadDurationMs = Date.now() - downloadStart;
+      metrics.totalDurationMs = Date.now() - startTime;
+      console.log(`[ASR Service] 🔇 Audio is very short/silence (${audioBuffer.length} bytes < 5.5KB). Skipping STT to save Groq tokens.`);
+      return options.includeMetrics ? { transcript: '', isSilence: true, metrics } : '';
     }
 
     // 2. Transcribe buffer
     const sttStart = Date.now();
     console.log(`🎙️ [ASR Transcribing] Sending ${audioBuffer.length} bytes to Groq Whisper (${this.whisperModel})...`);
-    const transcript = await this.transcribeBuffer(audioBuffer, 'recording.mp3');
+    const rawTranscript = await this.transcribeBuffer(audioBuffer, 'recording.mp3');
     metrics.sttDurationMs = Date.now() - sttStart;
     metrics.totalDurationMs = Date.now() - startTime;
 
-    if (options.includeMetrics) {
-      return { transcript, metrics };
+    const cleanText = (rawTranscript || '').trim();
+    const normalized = cleanText.toLowerCase().replace(/[^\w\s]/g, '').trim();
+    const KNOWN_SILENCE_HALLUCINATIONS = new Set([
+      'thank you',
+      'thank you very much',
+      'you',
+      'bye',
+      'subtitles by',
+      'thanks for watching',
+      'so',
+      ''
+    ]);
+
+    let finalTranscript = cleanText;
+    let isSilence = false;
+    if (KNOWN_SILENCE_HALLUCINATIONS.has(normalized) || cleanText === '.') {
+      console.log(`[ASR Service] 🔇 Filtered known Whisper silence hallucination: "${cleanText}" -> treating as silence`);
+      finalTranscript = '';
+      isSilence = true;
     }
-    return transcript;
+
+    if (options.includeMetrics) {
+      return { transcript: finalTranscript, isSilence, metrics };
+    }
+    return finalTranscript;
   }
 
   /**
@@ -164,7 +194,7 @@ class TranscriptionService {
   async transcribeWithGroqWhisper(audioBuffer, filename) {
     if (!this.groqApiKey) {
       console.warn('[ASR Service] No GROQ_API_KEY available for Groq Whisper transcription.');
-      return 'Customer inquiry regarding account services';
+      return '';
     }
 
     const maxRetries = 1;
@@ -175,6 +205,8 @@ class TranscriptionService {
         formData.append('file', audioBlob, filename);
         formData.append('model', this.whisperModel);
         formData.append('language', 'en');
+        // Pin vocabulary prompt so Whisper recognizes Ghanaian MoMo terms instead of mishearing
+        formData.append('prompt', 'MTN Mobile Money Ghana MoMo, cedis, Telecel, AirtelTigo, send money, cash out, balance enquiry, numbers');
         formData.append('temperature', '0');
         formData.append('response_format', 'json');
 
@@ -196,7 +228,7 @@ class TranscriptionService {
         console.log(`Model      : ${this.whisperModel}`);
         console.log(`Transcript : "${transcript}"`);
         console.log(`======================================================\n`);
-        return transcript || 'No speech detected';
+        return transcript || '';
       } catch (error) {
         if (error.response?.status === 429 && attempt < maxRetries) {
           const retryHeader = error.response.headers?.['retry-after'];
@@ -206,7 +238,7 @@ class TranscriptionService {
           continue;
         }
         console.error(`❌ [ASR Groq Whisper Error]: Status: ${error.response?.status} - ${JSON.stringify(error.response?.data || error.message)}`);
-        return 'I would like to check my account options';
+        return '';
       }
     }
   }

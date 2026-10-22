@@ -217,8 +217,8 @@ class IvrEngine {
     const callbackUrl = process.env.PUBLIC_CALLBACK_URL || '';
     const callbackAttr = callbackUrl ? ` callbackUrl="${escapeXml(callbackUrl)}"` : '';
 
-    // Quick-win telecom parameters: 2s silence timeout shaves 3s off every turn!
-    const recordTimeout = process.env.AT_RECORD_TIMEOUT || '2';
+    // Quick-win telecom parameters: 3.5s silence timeout gives callers natural breathing room
+    const recordTimeout = process.env.AT_RECORD_TIMEOUT || '3.5';
     const recordMaxLength = process.env.AT_RECORD_MAX_LENGTH || '12';
 
     // Turn 0: Call just started. Greet with MTN script menu and begin recording user voice response
@@ -261,6 +261,7 @@ class IvrEngine {
     // Turn 1+: Process caller speech or keypad response
     let userSpeech = '';
     let asrMetrics = null;
+    let isSilenceDetected = false;
 
     if (simulatedSpeech) {
       userSpeech = simulatedSpeech;
@@ -271,16 +272,19 @@ class IvrEngine {
       }
       const asrResult = await transcriptionService.transcribeAudioFromUrl(recordingUrl, { includeMetrics: true });
       if (typeof asrResult === 'object' && asrResult.transcript !== undefined) {
-        userSpeech = asrResult.transcript;
+        userSpeech = asrResult.transcript || '';
         asrMetrics = asrResult.metrics;
+        isSilenceDetected = Boolean(asrResult.isSilence) || !userSpeech.trim();
       } else {
-        userSpeech = asrResult;
+        userSpeech = asrResult || '';
+        isSilenceDetected = !userSpeech.trim();
       }
 
       if (dtmfDigits) {
         const cleanDigits = String(dtmfDigits).replace(/#/g, '').trim();
         if (cleanDigits) {
           userSpeech = userSpeech ? `${userSpeech} (Caller pressed key ${cleanDigits})` : `Option ${cleanDigits}`;
+          isSilenceDetected = false;
         }
       }
     } else if (dtmfDigits) {
@@ -288,7 +292,51 @@ class IvrEngine {
       const cleanDigits = String(dtmfDigits).replace(/#/g, '').trim();
       userSpeech = `Option ${cleanDigits || dtmfDigits}`;
     } else {
-      userSpeech = 'Hello, can you help me?';
+      isSilenceDetected = true;
+      userSpeech = '';
+    }
+
+    // Silence Gate: If no speech and no DTMF was received, prompt caller directly without wasting LLM tokens
+    if (isSilenceDetected && !dtmfDigits) {
+      console.log(`[IVR ENGINE] 🔇 Silence/no-speech detected on Turn ${session.step}. Skipping LLM to prevent token burn and hallucination.`);
+      const silenceReply = session.step === 1
+        ? "I didn't hear your response. To send money, press 1 or say send money. For account balance, press 2. To withdraw cash, press 3. Please speak your choice or press a key."
+        : "I didn't catch that. Please speak after the tone, or enter your choice on the keypad, followed by the hash key.";
+
+      const xml = `<Response>
+  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
+    <Say voice="en-US-Standard-C">${escapeXml(silenceReply)}</Say>
+  </Record>
+</Response>`;
+
+      const totalTurnMs = Date.now() - turnStartMs;
+      const latencyBreakdown = {
+        turnIndex: session.step,
+        sessionId: session.sessionId,
+        downloadMs: asrMetrics?.downloadDurationMs || 0,
+        audioBytes: asrMetrics?.audioBytes || 0,
+        sttMs: asrMetrics?.sttDurationMs || 0,
+        llmMs: 0,
+        toolMs: 0,
+        totalTurnMs,
+        targetSubTwoSeconds: true,
+        keysUsed: {
+          audioWhisper: transcriptionService.keySource,
+          llmReasoning: 'Skipped (Silence Gate)'
+        }
+      };
+
+      session.latencies = session.latencies || [];
+      session.latencies.push(latencyBreakdown);
+
+      return {
+        xml,
+        summary: 'Silence detected (Re-prompted caller without LLM token burn)',
+        transcript: '(silence)',
+        aiReply: silenceReply,
+        actionExecuted: null,
+        latencyBreakdown
+      };
     }
 
     console.log(`\n======================================================`);

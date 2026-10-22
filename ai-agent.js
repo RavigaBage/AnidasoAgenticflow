@@ -310,6 +310,7 @@ class AiAgent {
     this.apiKey = process.env.GROQ_LLM_KEY || process.env.GROQ_API_KEY || '';
     this.keySource = process.env.GROQ_LLM_KEY ? 'GROQ_LLM_KEY (dedicated LLM)' : 'GROQ_API_KEY (shared)';
     this.model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+    this.fallbackModel = process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant';
     this.apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
     this.servicesMemory = this.loadServicesMemory();
     this.ivrScript = this.loadIvrScript();
@@ -327,6 +328,7 @@ class AiAgent {
     this.reloadConfig();
     return {
       model: this.model,
+      fallbackModel: this.fallbackModel,
       keySource: this.keySource,
       isConfigured: Boolean(this.apiKey)
     };
@@ -387,7 +389,7 @@ Handle caller choices intelligently whether they PRESS a keypad key (DTMF) or SP
 1. OPTION 1 / "Send Money" (Keypad 1 or spoken "send money" / "1"):
    - If the caller only said "1", pressed 1, or said "send money":
      Reply: "You have selected Send Money. Please tell us the recipient's mobile phone number, followed by the hash key."
-   - If the caller also spoke details at the same time (e.g. "Send 50 cedis to 0244123456"):
+   - If the caller also spoke details at the same time:
      Reason directly over the details provided, call verify_kyc_mtn for the number, and ask for whatever is missing!
 
 2. OPTION 2 / "Account & Balance Enquiry" (Keypad 2 or spoken "check balance" / "2"):
@@ -405,13 +407,17 @@ Handle caller choices intelligently whether they PRESS a keypad key (DTMF) or SP
    - Reply: "To send money, press 1. For account and balance enquiry, press 2. To withdraw money, press 3. Please tell us what you would like to do, followed by hash."
 
 5. INTELLIGENT DIRECT REASONING (SMART FAST-PATH):
-   - Callers do not always follow menu numbers. If a caller immediately states their intent (e.g. "I want to send 100 cedis to my mom on 0553838464"):
+   - Callers do not always follow menu numbers. If a caller immediately states their intent:
      Reason directly, recognize Send Money, call verify_kyc_mtn, and continue smoothly without forcing them back to the menu!
+
+CRITICAL ANTI-HALLUCINATION RULE:
+- You must NEVER execute a tool (verify_kyc_mtn or send_money_mtn) with a phone number or amount unless the caller EXPLICITLY spoke or pressed those digits in the conversation.
+- NEVER use example numbers or invent phone numbers. If no number has been spoken, ask the caller for the recipient number.
 
 AVAILABLE SERVICES & REQUIRED DATA:
 1. Send Money (Action: send_money_mtn)
    Required Fields:
-   - recipient mobile number (e.g. 0244123456, 0204958674)
+   - recipient mobile number (strictly 10 digits spoken by the caller)
    - network (MTN, Telecel, AirtelTigo - defaults to MTN)
    - amount in Ghana Cedis (GHS)
    - reference (reference note or reason for the transfer)
@@ -584,41 +590,35 @@ VOICE FORMAT:
   }
 
   /**
-   * Send completion request to Groq with automatic 429 rate limit backoff.
-   * Backoff honors the HTTP 'retry-after' header and is capped to a strict
-   * maximum (3.0s, max 2 retries) so live voice turns stay within the
-   * Africa's Talking webhook latency window and the caller never suffers minutes of silence.
+   * Send completion request to Groq with instant failover on 429 rate limits.
+   * If the primary model hits a rate limit, it immediately attempts the fallbackModel
+   * (e.g. llama-3.1-8b-instant) with 0ms sleep because Groq tracks limits per-model!
    */
-  async callGroq(payload, retries = 2) {
+  async callGroq(payload) {
     const headers = {
       'Authorization': `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json'
     };
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        return await axios.post(this.apiUrl, payload, { headers, timeout: 8000 });
-      } catch (err) {
-        if (err.response?.status === 429 && attempt < retries) {
-          const retryHeader = err.response.headers?.['retry-after'];
-          const errMsg = err.response?.data?.error?.message || '';
-          const match = errMsg.match(/try again in (\d+(?:\.\d+)?)s/i);
 
-          let waitSeconds = 2.0;
-          if (retryHeader) {
-            const parsed = parseFloat(retryHeader);
-            if (!isNaN(parsed) && parsed > 0) {
-              waitSeconds = Math.min(parsed, 3.0);
-            }
-          } else if (match) {
-            waitSeconds = Math.min(parseFloat(match[1]) + 0.5, 3.0);
-          }
-
-          console.warn(`[AI Agent] ⏳ Groq 429 rate limit (attempt ${attempt + 1}/${retries}). Header retry-after: ${retryHeader || 'none'} -> Waiting ${waitSeconds.toFixed(1)}s before retry...`);
-          await new Promise(r => setTimeout(r, waitSeconds * 1000));
-          continue;
+    try {
+      return await axios.post(this.apiUrl, payload, { headers, timeout: 7000 });
+    } catch (err) {
+      if (err.response?.status === 429 && this.fallbackModel && payload.model !== this.fallbackModel) {
+        console.warn(`[AI Agent] ⚡ Groq 429 rate limit on ${payload.model}. Fast-failing over to ${this.fallbackModel} (0ms wait)...`);
+        const fallbackPayload = {
+          ...payload,
+          model: this.fallbackModel
+        };
+        delete fallbackPayload.reasoning_format;
+        delete fallbackPayload.reasoning_effort;
+        try {
+          return await axios.post(this.apiUrl, fallbackPayload, { headers, timeout: 6000 });
+        } catch (fallbackErr) {
+          console.warn(`[AI Agent] Fallback model error:`, fallbackErr.response?.data?.error?.message || fallbackErr.message);
+          throw fallbackErr;
         }
-        throw err;
       }
+      throw err;
     }
   }
 

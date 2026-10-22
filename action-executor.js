@@ -47,11 +47,11 @@ class ActionExecutor {
             properties: {
               number: {
                 type: "string",
-                description: "10-digit mobile phone number to verify on Mobile Money (e.g. 0244123456 or 0204958674)"
+                description: "10-digit mobile phone number explicitly spoken by the caller to verify on Mobile Money."
               },
               stated_name: {
                 type: "string",
-                description: "The name the caller mentioned or thinks belongs to this number (e.g. 'Abena Oforiwaa'). Optional."
+                description: "The name the caller mentioned or thinks belongs to this number. Optional."
               }
             },
             required: ["number"]
@@ -68,7 +68,7 @@ class ActionExecutor {
             properties: {
               number: {
                 type: "string",
-                description: "Recipient mobile phone number (e.g. 0244123456 or 0204958674)"
+                description: "Recipient 10-digit mobile phone number explicitly spoken by the caller for the transfer."
               },
               network: {
                 type: "string",
@@ -85,7 +85,7 @@ class ActionExecutor {
               },
               registered_name: {
                 type: "string",
-                description: "The official registered KYC name returned by verify_kyc_mtn (e.g. 'Sand Box')"
+                description: "The official registered KYC name returned by verify_kyc_mtn"
               },
               confirm: {
                 type: "boolean",
