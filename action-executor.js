@@ -41,17 +41,17 @@ class ActionExecutor {
         type: "function",
         function: {
           name: "verify_kyc_mtn",
-          description: "MANDATORY SECURITY & KYC VERIFICATION: Look up and verify the official registered subscriber name and active account status on MTN Mobile Money for a phone number. ALWAYS call this tool immediately whenever a recipient phone number is provided or corrected for a transfer, BEFORE asking the caller to confirm.",
+          description: "Verify subscriber name and active account on MTN Mobile Money. Call when a 10-digit number is spoken, before asking for final approval.",
           parameters: {
             type: "object",
             properties: {
               number: {
                 type: "string",
-                description: "10-digit mobile phone number explicitly spoken by the caller to verify on Mobile Money."
+                description: "10-digit mobile number explicitly spoken by caller."
               },
               stated_name: {
                 type: "string",
-                description: "The name the caller mentioned or thinks belongs to this number. Optional."
+                description: "Name caller mentioned. Optional."
               }
             },
             required: ["number"]
@@ -62,7 +62,7 @@ class ActionExecutor {
         type: "function",
         function: {
           name: "send_money_mtn",
-          description: "CRITICAL SECURITY GUARD: Execute an MTN Mobile Money transfer. STRICT RULES: (1) You can ONLY call this tool AFTER you have spoken the final referencing approval prompt to the caller stating the amount, number, registered name, and reference, AND the caller has heard that prompt and responded in the SUBSEQUENT turn with 'yes', 'confirm', or 'I approve'. (2) You are STRICTLY FORBIDDEN from calling this tool when the caller provides the reference or amount — providing a reference or amount is NOT approval! (3) If the caller has not yet responded 'yes' to your final approval question, you MUST NOT call this tool.",
+          description: "Execute MTN MoMo transfer. Call ONLY after KYC is verified and caller explicitly approved ('yes', 'confirm', or DTMF 1).",
           parameters: {
             type: "object",
             properties: {
