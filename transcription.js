@@ -15,11 +15,15 @@ class TranscriptionService {
   }
 
   reloadConfig() {
-    this.provider = process.env.ASR_PROVIDER || 'groq'; // 'groq' | 'custom' | 'mock'
+    this.provider = process.env.ASR_PROVIDER || 'groq'; // 'groq' | 'ug_hci' | 'custom' | 'mock'
     // Prioritize dedicated audio/speech key (GROQ_TTS_KEY or GROQ_STT_KEY), fallback to GROQ_API_KEY
     this.groqApiKey = process.env.GROQ_TTS_KEY || process.env.GROQ_STT_KEY || process.env.GROQ_API_KEY || '';
     this.keySource = process.env.GROQ_TTS_KEY ? 'GROQ_TTS_KEY (dedicated speech/audio)' : (process.env.GROQ_STT_KEY ? 'GROQ_STT_KEY (dedicated speech/audio)' : 'GROQ_API_KEY (shared)');
     this.whisperModel = process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo';
+
+    // University of Ghana HCI Lab Speech API for Ghanaian languages (Twi / Akan)
+    this.ugHciLabApiKey = process.env.UG_HCI_LAB_API_KEY || '';
+    this.ugHciLabUrl = process.env.UG_HCI_LAB_URL || 'https://lab-subscription-platform.vercel.app';
   }
 
   getConfigSummary() {
@@ -28,7 +32,8 @@ class TranscriptionService {
       provider: this.provider,
       whisperModel: this.whisperModel,
       keySource: this.keySource,
-      isConfigured: Boolean(this.groqApiKey)
+      isConfigured: Boolean(this.groqApiKey),
+      ugHciLabConfigured: Boolean(this.ugHciLabApiKey)
     };
   }
 
@@ -50,6 +55,9 @@ class TranscriptionService {
     this.reloadConfig();
     const startTime = Date.now();
 
+    const activeProvider = options.provider || (options.language === 'twi' ? 'ug_hci' : this.provider);
+    const isTwi = options.language === 'twi' || activeProvider === 'ug_hci' || activeProvider === 'ug_hci_lab';
+
     const metrics = {
       downloadStartMs: startTime,
       downloadDurationMs: 0,
@@ -57,8 +65,9 @@ class TranscriptionService {
       sttDurationMs: 0,
       totalDurationMs: 0,
       attempts: 0,
-      provider: this.provider,
-      model: this.whisperModel
+      provider: activeProvider,
+      model: isTwi ? 'UG HCI Lab Akan/Twi ASR' : this.whisperModel,
+      keySource: isTwi ? 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)' : this.keySource
     };
 
     if (!recordingUrl) {
@@ -79,7 +88,7 @@ class TranscriptionService {
     console.log(`🎙️ [ASR SERVICE] Processing Audio Recording`);
     console.log(`Original URL : ${recordingUrl}`);
     console.log(`Candidate URL: ${cleanUrl}`);
-    console.log(`Provider     : ${this.provider} (${this.whisperModel})`);
+    console.log(`Provider     : ${activeProvider} (${isTwi ? 'UG HCI Lab Twi' : this.whisperModel})`);
     console.log(`======================================================`);
 
     let audioBuffer = null;
@@ -131,18 +140,17 @@ class TranscriptionService {
     }
 
     // Silence Gate: Audio smaller than 5.5KB is < 2.5 seconds of silence/noise.
-    // Skipping Whisper saves tokens and avoids rate limits.
     if (audioBuffer.length < 5500) {
       metrics.downloadDurationMs = Date.now() - downloadStart;
       metrics.totalDurationMs = Date.now() - startTime;
-      console.log(`[ASR Service] 🔇 Audio is very short/silence (${audioBuffer.length} bytes < 5.5KB). Skipping STT to save Groq tokens.`);
+      console.log(`[ASR Service] 🔇 Audio is very short/silence (${audioBuffer.length} bytes < 5.5KB). Skipping STT to save tokens.`);
       return options.includeMetrics ? { transcript: '', isSilence: true, metrics } : '';
     }
 
     // 2. Transcribe buffer
     const sttStart = Date.now();
-    console.log(`🎙️ [ASR Transcribing] Sending ${audioBuffer.length} bytes to Groq Whisper (${this.whisperModel})...`);
-    const rawTranscript = await this.transcribeBuffer(audioBuffer, 'recording.mp3');
+    console.log(`🎙️ [ASR Transcribing] Sending ${audioBuffer.length} bytes to ${isTwi ? 'UG HCI Lab (Twi ASR)' : `Groq Whisper (${this.whisperModel})`}...`);
+    const rawTranscript = await this.transcribeBuffer(audioBuffer, 'recording.mp3', activeProvider);
     metrics.sttDurationMs = Date.now() - sttStart;
     metrics.totalDurationMs = Date.now() - startTime;
 
@@ -176,14 +184,56 @@ class TranscriptionService {
   /**
    * Transcribe raw audio buffer
    */
-  async transcribeBuffer(audioBuffer, filename = 'audio.mp3') {
-    switch (this.provider) {
+  async transcribeBuffer(audioBuffer, filename = 'audio.mp3', provider = this.provider) {
+    switch (provider) {
+      case 'ug_hci':
+      case 'ug_hci_lab':
+        return await this.transcribeWithUgHciLab(audioBuffer, filename);
       case 'groq':
         return await this.transcribeWithGroqWhisper(audioBuffer, filename);
       case 'custom':
         return await this.transcribeWithCustomProvider(audioBuffer);
       default:
         return await this.transcribeWithGroqWhisper(audioBuffer, filename);
+    }
+  }
+
+  /**
+   * Transcribe audio using University of Ghana HCI Lab Speech API
+   * Specialized for Ghanaian languages (Akan / Twi).
+   * POST https://lab-subscription-platform.vercel.app/api/v1/asr
+   */
+  async transcribeWithUgHciLab(audioBuffer, filename = 'recording.mp3') {
+    if (!this.ugHciLabApiKey) {
+      console.warn('[ASR Service] No UG_HCI_LAB_API_KEY found in .env');
+      return '';
+    }
+
+    try {
+      const endpoint = `${this.ugHciLabUrl.replace(/\/$/, '')}/api/v1/asr`;
+      const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+      const formData = new FormData();
+      formData.append('file', blob, filename);
+      formData.append('language', 'twi');
+
+      console.log(`🎙️ [ASR UG HCI Lab] Sending ${audioBuffer.length} bytes to ${endpoint}...`);
+      const response = await axios.post(endpoint, formData, {
+        headers: {
+          'Authorization': `Bearer ${this.ugHciLabApiKey}`
+        },
+        timeout: 10000
+      });
+
+      const transcript = (response.data?.transcription || response.data?.text || '').trim();
+      console.log(`\n======================================================`);
+      console.log(`🎙️ [ASR UG HCI LAB SUCCESS]`);
+      console.log(`Language   : Twi (Akan)`);
+      console.log(`Transcript : "${transcript}"`);
+      console.log(`======================================================\n`);
+      return transcript;
+    } catch (error) {
+      console.error(`❌ [ASR UG HCI Lab Error]: Status: ${error.response?.status} - ${JSON.stringify(error.response?.data || error.message)}`);
+      return '';
     }
   }
 

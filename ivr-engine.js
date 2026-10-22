@@ -225,7 +225,7 @@ class IvrEngine {
 
     // Turn 0: Call just started. Greet with MTN script menu and begin recording user voice response
     if (session.step === 0 && !recordingUrl && !dtmfDigits && !simulatedSpeech) {
-      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. To send money, press 1 or say send money. For account and balance enquiry, press 2. To withdraw money, press 3. Please speak your choice or press a key, followed by the hash key.</Say>`;
+      let promptTag = `<Say voice="en-US-Standard-C">Welcome to Okwankyerefopa MTN Mobile Money. For English, press 1 or say English. For Twi, press 2 or say Twi. To send money directly, press 1. Please speak your choice or press a key, followed by the hash key.</Say>`;
 
       // If user has a pre-recorded audio file menu configured in .env
       if (this.audioMenuUrl) {
@@ -242,7 +242,7 @@ class IvrEngine {
       const totalTurnMs = Date.now() - turnStartMs;
       return {
         xml,
-        summary: 'Voice AI Greeting & MTN Menu (<Record> listening for choice or speech)',
+        summary: 'Voice AI Greeting & Language Menu (<Record> listening for choice or speech)',
         transcript: null,
         aiReply: null,
         actionExecuted: null,
@@ -268,11 +268,16 @@ class IvrEngine {
     if (simulatedSpeech) {
       userSpeech = simulatedSpeech;
     } else if (recordingUrl) {
-      // 1. Transcribe caller audio recording from AT
+      // 1. Transcribe caller audio recording from AT (using UG HCI Lab for Twi, Groq for English)
       if (typeof onAiProgress === 'function') {
         onAiProgress(session.sessionId, { stage: 'TRANSCRIBING', recordingUrl });
       }
-      const asrResult = await transcriptionService.transcribeAudioFromUrl(recordingUrl, { includeMetrics: true });
+      const asrOptions = {
+        includeMetrics: true,
+        provider: session.asrProvider || (session.language === 'twi' ? 'ug_hci' : undefined),
+        language: session.language || 'en'
+      };
+      const asrResult = await transcriptionService.transcribeAudioFromUrl(recordingUrl, asrOptions);
       if (typeof asrResult === 'object' && asrResult.transcript !== undefined) {
         userSpeech = asrResult.transcript || '';
         asrMetrics = asrResult.metrics;
@@ -296,6 +301,53 @@ class IvrEngine {
     } else {
       isSilenceDetected = true;
       userSpeech = '';
+    }
+
+    // Language Selection Handling: If caller selected Twi (Keypad 2 or spoken "Twi")
+    const cleanDigits = dtmfDigits ? String(dtmfDigits).replace(/#/g, '').trim() : '';
+    const isTwiChosen = cleanDigits === '2' || /\b(twi|akan)\b/i.test(userSpeech);
+
+    if (isTwiChosen && session.language !== 'twi' && session.step <= 2) {
+      session.language = 'twi';
+      session.asrProvider = 'ug_hci';
+      console.log(`[IVR ENGINE] 🇬🇭 Caller selected TWI! Switched ASR provider to UG_HCI_LAB_API_KEY.`);
+
+      const twiGreeting = "Akwaaba ba Okwankyerefopa MTN Mobile Money. Sɛ worepɛ sɛ womane sika a, ka sɛ mane sika anaa mia baako. Sɛ worepɛ sɛ wohwɛ wo sika a, ka sɛ hwɛ sika anaa mia mmienu. Sɛ worepɛ sɛ woyi sika a, ka sɛ yi sika anaa mia mmiɛnsa. Yɛretie wo.";
+
+      const xml = `<Response>
+  <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
+    <Say voice="en-US-Standard-C">${escapeXml(twiGreeting)}</Say>
+  </Record>
+</Response>`;
+
+      const totalTurnMs = Date.now() - turnStartMs;
+      const latencyBreakdown = {
+        turnIndex: session.step,
+        sessionId: session.sessionId,
+        downloadMs: asrMetrics?.downloadDurationMs || 0,
+        audioBytes: asrMetrics?.audioBytes || 0,
+        sttMs: asrMetrics?.sttDurationMs || 0,
+        llmMs: 0,
+        toolMs: 0,
+        totalTurnMs,
+        targetSubTwoSeconds: true,
+        keysUsed: {
+          audioWhisper: 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)',
+          llmReasoning: 'Language Switch Fast-Path'
+        }
+      };
+
+      session.latencies = session.latencies || [];
+      session.latencies.push(latencyBreakdown);
+
+      return {
+        xml,
+        summary: 'Language switched to Twi (UG HCI Lab ASR active)',
+        transcript: userSpeech || 'Option 2 (Twi)',
+        aiReply: twiGreeting,
+        actionExecuted: null,
+        latencyBreakdown
+      };
     }
 
     // Silence Gate: If no speech and no DTMF was received, prompt caller directly without wasting LLM tokens
@@ -360,7 +412,8 @@ class IvrEngine {
       dtmfDigits: dtmfDigits,
       dtmfHistory: session.dtmfHistory,
       durationInSeconds: session.durationInSeconds,
-      startTime: session.startTime
+      startTime: session.startTime,
+      language: session.language || 'en'
     };
     const agentResult = await aiAgent.generateVoiceReply(session.sessionId, userSpeech, callContext);
     const aiReply = typeof agentResult === 'object' && agentResult.reply ? agentResult.reply : agentResult;
@@ -411,7 +464,7 @@ class IvrEngine {
       totalTurnMs,
       targetSubTwoSeconds: totalTurnMs < 2000,
       keysUsed: {
-        audioWhisper: transcriptionService.keySource,
+        audioWhisper: session.language === 'twi' ? 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)' : transcriptionService.keySource,
         llmReasoning: aiAgent.keySource
       }
     };

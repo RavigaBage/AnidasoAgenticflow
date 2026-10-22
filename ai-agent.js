@@ -29,6 +29,7 @@ class CallSessionMemory {
     this.callerNumber = initialContext.callerNumber || 'Unknown';
     this.destinationNumber = initialContext.destinationNumber || 'Unknown';
     this.direction = initialContext.direction || 'Inbound';
+    this.language = initialContext.language || 'en';
     this.startTime = initialContext.startTime || new Date().toISOString();
     this.startTimeMs = Date.now();
     this.lastActiveTime = new Date().toISOString();
@@ -78,6 +79,9 @@ class CallSessionMemory {
     }
     if (Array.isArray(context.dtmfHistory)) {
       this.dtmfHistory = [...new Set([...this.dtmfHistory, ...context.dtmfHistory])];
+    }
+    if (context.language) {
+      this.language = context.language;
     }
     this.lastActiveTime = new Date().toISOString();
   }
@@ -143,6 +147,7 @@ class CallSessionMemory {
 
   buildSystemPrompt(baseSystemPrompt) {
     const kycState = [
+      `Language: ${this.language === 'twi' ? 'Twi (Akan) - Respond in Twi!' : 'English'}`,
       `Recipient: ${this.slots.recipientNumber || 'None'} (${this.slots.recipientNetwork || 'Unknown'})`,
       `KYC Registered Name: ${this.slots.verifiedKycName || 'NOT YET VERIFIED (call verify_kyc_mtn first)'}`,
       this.slots.statedRecipientName ? `Caller Stated Name: ${this.slots.statedRecipientName}` : null,
@@ -298,7 +303,15 @@ SEND MONEY SEQUENCE & ANTI-FRAUD RULES:
    - ONLY when caller explicitly confirms ("yes", "confirm", "I approve", or enters 1), call send_money_mtn(confirm=true).
    - If caller says "no" or "cancel": "Transfer cancelled. Please provide the correct recipient phone number."
 5. Anti-Hallucination:
-   - NEVER call tools or use phone numbers/amounts unless explicitly spoken by caller. Never invent data.`;
+   - NEVER call tools or use phone numbers/amounts unless explicitly spoken by caller. Never invent data.
+
+LANGUAGE RULES:
+- If caller chose Twi or speaks Twi, respond warmly in natural Twi (Akan):
+  * Send money: "Mane sika. Kyerɛ me fon nɔmba a worepɛ sɛ womane sika no kɔ so."
+  * Amount: "Sika ahe na worepɛ sɛ womane kɔ [nɔmba] so?"
+  * Check balance: "Yɛrehwɛ wo sika ama wo. Wobɛtumi nso apɔsɔ star one seven zero hash wɔ wo fon so."
+  * Confirm: "Worepɛ sɛ womane [amount] Ghana Cedis kɔ [number] a din a ɛda so ne [name]. Wopene so anaa?"
+- If caller chose English or speaks English, respond in English.`;
   }
 
   getConfigSummary() {
