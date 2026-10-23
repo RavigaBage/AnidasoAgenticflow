@@ -283,8 +283,15 @@ class MtnMoMoService {
   async sendMoney({ amount, number, reference = 'Transfer', currency = null, payerMessage = null }) {
     this.reloadConfig();
     const referenceId = crypto.randomUUID();
+    if (!number || !amount) {
+      throw new Error('Recipient number and amount are required');
+    }
     const msisdn = this.formatMsisdn(number);
-    const amountStr = String(parseFloat(amount).toFixed(2));
+    const parsedAmount = Number(amount);
+    if (!msisdn || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      throw new Error('A valid recipient number and positive amount are required');
+    }
+    const amountStr = parsedAmount.toFixed(2);
     const { subKey } = this.getProductCredentials('disbursement');
 
     // In MTN Sandbox, the gateway requires 'EUR'
@@ -436,8 +443,15 @@ class MtnMoMoService {
   async withdrawCash({ amount, number, note = 'Cash Out' }) {
     this.reloadConfig();
     const referenceId = crypto.randomUUID();
-    const msisdn = this.formatMsisdn(number || '');
-    const amountStr = amount ? String(parseFloat(amount).toFixed(2)) : '10.00';
+    if (!number || !amount) {
+      throw new Error('Customer number and amount are required');
+    }
+    const msisdn = this.formatMsisdn(number);
+    const parsedAmount = Number(amount);
+    if (!msisdn || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      throw new Error('A valid customer number and positive amount are required');
+    }
+    const amountStr = parsedAmount.toFixed(2);
     const { subKey } = this.getProductCredentials('collection');
     const apiCurrency = this.environment === 'sandbox' ? 'EUR' : this.currency;
 
@@ -451,7 +465,7 @@ class MtnMoMoService {
         externalId: Date.now().toString(),
         payer: {
           partyIdType: 'MSISDN',
-          partyId: msisdn || '233244123456'
+          partyId: msisdn
         },
         payerMessage: `Cash Out request for ${amountStr} ${apiCurrency}`,
         payeeNote: note

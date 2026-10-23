@@ -1,0 +1,194 @@
+  {
+  "invalid_recipient": {
+    "audio_file_id": 1041,
+     "language": "Twi",
+    "content_item": "The number you entered does not appear to be valid. Please enter the recipient's number again and press the hash key when finished.",
+    "url":"Twi_audios/invalid_recipient.mp3"
+  },
+  "recipient_found": {
+    "audio_file_id": 1042,
+    "language": "Twi",
+    "content_item": "I have found the name of the person you want to send money to.",
+    "url":"Twi_audios/recipient_found.mp3"
+  },
+  "recipient_verify": {
+    "audio_file_id": 1043,
+    "language": "Twi",
+    "content_item": "Please listen to the recipient's name and the last four digits of their phone number.",
+    "url":"Twi_audios/recipient_verify.mp3"
+  },
+  "recipient_confirm_speech": {
+    "audio_file_id": 1044,
+    "language": "Twi",
+    "content_item": "You are about to send money to this person. Say yes or press 1 to proceed. Say no or press 2 to cancel.",
+    "url":"Twi_audios/recipient_confirm_speech.mp3"
+  },
+  "use_recipient": {
+    "audio_file_id": 1045,
+    "language": "Twi",
+    "content_item": "Okay, we will use this recipient for the transfer.",
+    "url":"Twi_audios/use_recipient.mp3"
+  },    
+  "amount_prompt": {
+    "audio_file_id": 1046,
+    "language": "Twi",
+    "content_item": "How much money would you like to send?",
+    "url":"Twi_audios/amount_prompt.mp3"
+  },
+  "amount_readback": {
+    "audio_file_id": 1047,
+    "language": "Twi",
+    "content_item": "I heard that you want to send this amount.",
+    "url":"Twi_audios/amount_readback.mp3"
+  },
+  "amount_too_high": {
+    "audio_file_id": 1048,
+    "language": "Twi",
+    "content_item": "The amount exceeds the limit for your account. Please enter a lower amount.",
+    "url":"Twi_audios/amount_too_high.mp3"
+  },
+  "amount_too_low": {
+    "audio_file_id": 1049,
+    "language": "Twi",
+    "content_item": "The amount is below the minimum allowed. Please enter a higher amount.",
+    "url":"Twi_audios/amount_too_low.mp3"
+  },
+  "change_amount": {
+    "audio_file_id": 1050,
+    "language": "Twi",
+    "content_item": "Please enter a different amount.",
+    "url":"Twi_audios/change_amount.mp3"
+  },
+  "enter_amount": {
+    "audio_file_id": 1051,
+    "language": "Twi",
+    "content_item": "Enter the amount you want to send. Press star to add pesewas, then press hash when finished.",
+    "url":"Twi_audios/enter_amount.mp3"
+  },
+  "invalid_amount": {
+    "audio_file_id": 1052,
+    "language": "Twi",
+    "content_item": "The amount you entered is invalid. Please enter a different amount.",
+    "url":"Twi_audios/invalid_amount.mp3"
+  },
+  "repeat_amount": {
+    "audio_file_id": 1053,
+    "language": "Twi",
+    "content_item": "Please say the amount again.",
+    "url":"Twi_audios/repeat_amount.mp3"
+  },
+  "authorize_phone": {
+    "audio_file_id": 1054,
+    "language": "Twi",
+    "content_item": "Please authorize the transaction on your phone.",
+    "url":"Twi_audios/authorize_phone.mp3"
+  },
+  "auth_received": {
+    "audio_file_id": 1055,
+    "language": "Twi",
+    "content_item": "We have received your authorization to proceed.",
+    "url":"Twi_audios/auth_received.mp3"
+  },
+  "processing": {
+    "audio_file_id": 1056,
+    "language": "Twi",
+    "content_item": "Your authorization is not complete yet. Please wait while we check its status.",
+    "url":"Twi_audios/processing.mp3"
+  },
+  "waiting_confirmation": {
+    "audio_file_id": 1057,
+    "language": "Twi",
+    "content_item": "We are waiting for confirmation from the mobile money service.",
+    "url":"Twi_audios/waiting_confirmation.mp3"
+  },
+  "submitted": {
+    "audio_file_id": 1058,
+    "language": "Twi",
+    "content_item": "Your transaction has been submitted.",
+    "url":"Twi_audios/submitted.mp3"
+  },
+  "check_final_transaction_status": {
+    "audio_file_id": 1059,
+    "language": "Twi",
+    "content_item": "We are checking the final status of your transaction.",
+    "url":"Twi_audios/check_final_transaction_status.mp3"
+  },
+  "success_sent": {
+    "audio_file_id": 1060,
+    "language": "Twi",
+    "content_item": "The money has been sent successfully.",
+    "url":"Twi_audios/success_sent.mp3"
+  },
+  "success_close": {
+    "audio_file_id": 1061,
+    "language": "Twi",
+    "content_item": "Your transaction has been completed successfully. Thank you for using Okwankyerefo Pa.",
+    "url":"Twi_audios/success_close.mp3"
+  },
+  "post_success_help": {
+    "audio_file_id": 1062,
+    "language": "Twi",
+    "content_item": "Your transaction is complete. Can I help you with anything else, such as sending money?",
+    "url":"Twi_audios/post_success_help.mp3"
+  },
+  "failed": {
+    "audio_file_id": 1063,
+    "language": "Twi",
+    "content_item": "We could not complete your transaction. The transfer was not completed. Please try again later.",
+    "url":"Twi_audios/failed.mp3"
+  },
+  "failure_retry": {
+    "audio_file_id": 1064,
+    "language": "Twi",
+    "content_item": "We could not complete your transaction. Would you like to try again?",
+    "url":"Twi_audios/failure_retry.mp3"
+  },
+  "system_error": {
+    "audio_file_id": 1065,
+    "language": "Twi",
+    "content_item": "Sorry, we could not complete this transaction because of a system error. Please try again later.",
+    "url":"Twi_audios/system_error.mp3"
+  },
+  "cancel": {
+    "audio_file_id": 1066,
+    "language": "Twi",
+    "content_item": "Your transaction has been cancelled. We did not complete it.",
+    "url":"Twi_audios/cancel.mp3"
+  },
+  "customer_declined": {
+    "audio_file_id": 1067,
+    "language": "Twi",
+    "content_item": "You did not authorize the transaction, so we could not transfer your money.",
+    "url":"Twi_audios/customer_declined.mp3"
+  },
+  "no_transfer_confirmed": {
+    "audio_file_id": 1068,
+    "language": "Twi",
+    "content_item": "You have not confirmed the transaction.",
+    "url":"Twi_audios/no_transfer_confirmed.mp3"
+  },
+  "timeout": {
+    "audio_file_id": 1069,
+    "language": "Twi",
+    "content_item": "We did not receive your confirmation in time. Please check your mobile money messages before trying again.",
+    "url":"Twi_audios/timeout.mp3"
+  },
+  "balance_unavailable": {
+    "audio_file_id": 1070,
+    "language": "Twi",
+    "content_item": "I cannot confirm your mobile money balance through this channel. Please use the official mobile money channel to check your balance.",
+    "url":"Twi_audios/balance_unavailable.mp3"
+  },
+  "keep_reference": {
+    "audio_file_id": 1071,
+    "language": "Twi",
+    "content_item": "Please keep this reference for future use.",
+    "url":"Twi_audios/keep_reference.mp3"
+  },
+  "pin_block": {
+    "audio_file_id": 1072,
+    "language": "Twi",
+    "content_item": "I cannot process the PIN you entered.",
+    "url":"Twi_audios/pin_block.mp3"
+  }
+}

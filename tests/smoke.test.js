@@ -161,8 +161,25 @@ async function postForm(url, fields) {
 
     const aiAgentMod = require('../ai-agent');
     const asrMod = require('../transcription');
+    const audioArranger = require('../audio-arranger');
     check('aiAgent.getConfigSummary() returns valid config', typeof aiAgentMod.getConfigSummary === 'function' && Boolean(aiAgentMod.getConfigSummary().model));
     check('transcription.getConfigSummary() returns valid config', typeof asrMod.getConfigSummary === 'function' && Boolean(asrMod.getConfigSummary().whisperModel));
+    check('agent prompt always replies in English', aiAgentMod.systemPrompt.includes('Always reply in simple English'));
+
+    const availableClips = [{ id: 'welcome', file: 'welcome.wav', text: 'Welcome', language: 'twi' }];
+    const completeArrangement = audioArranger.parseArrangement(JSON.stringify({
+      segments: [
+        { type: 'clip', id: 'welcome', text: 'Welcome' },
+        { type: 'tts', category: 'amount', text: ' two hundred cedis.' }
+      ]
+    }), 'Welcome two hundred cedis.', availableClips);
+    check('audio arrangement preserves every reply word in order', Array.isArray(completeArrangement) && completeArrangement.length === 2);
+    check('audio arrangement rejects omitted reply content', audioArranger.parseArrangement(JSON.stringify({
+      segments: [{ type: 'clip', id: 'welcome', text: 'Welcome' }]
+    }), 'Welcome two hundred cedis.', availableClips) === null);
+    check('audio arrangement rejects unknown clip IDs', audioArranger.parseArrangement(JSON.stringify({
+      segments: [{ type: 'clip', id: 'unknown', text: 'Welcome' }]
+    }), 'Welcome', availableClips) === null);
   } catch (err) {
     failures++;
     console.error('\n[smoke] Unexpected failure:', err);

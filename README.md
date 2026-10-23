@@ -28,7 +28,7 @@ A real-time phone simulator and voice event processor configured for **Africa's 
 
 3. **Multi-Turn IVR Engine**:
    - **Interactive Menu Flow**:
-     - *Turn 1*: Prompts caller with `<GetDigits>` menu (1: Account Balance, 2: Audio playback `<Play>`, 3: Leave recording `<Record>`, 0: Forward to agent `<Dial>`).
+     - *Turn 1*: Prompts caller with `<GetDigits>` menu (1: Balance guidance, 2: Configured audio playback `<Play>`, 3: Leave recording `<Record>`, 0: Forward to configured support line `<Dial>`).
      - *Turn 2*: Processes entered `dtmfDigits` and executes the next action.
    - **Custom XML Mode**: Directly edit `<Response>` XML in real-time in the UI and test immediate responses.
    - **Live Operator Mode**: Holds incoming calls open for up to 8 seconds, notifying the browser operator to write or select custom response XML on the fly.
@@ -40,6 +40,27 @@ A real-time phone simulator and voice event processor configured for **Africa's 
    - Test full IVR loops locally before exposing your server to the internet or configuring ngrok.
 
 ---
+
+## Twi Audio Matching
+
+Twi replies keep their English text for the agent and dashboard. The audio arranger matches exact reply text against `Audio_library/urls.json` and plays a listed clip only when its referenced audio file exists. Replies not covered by an exact clip are synthesized by HCI Lab TTS.
+
+Keep each clip's exact spoken text, generated ID, language, and relative audio path in `Audio_library/urls.json`; place its audio file at that path under `Audio_library/`. Twi clips must use `language: "Twi"`.
+
+```json
+{
+   "clips": [
+      {
+         "id": "Id1",
+         "file": "Id1.wav",
+         "text": "Welcome.",
+         "language": "twi"
+      }
+   ]
+}
+```
+
+The HCI Lab request uses the existing `UG_HCI_LAB_API_KEY` environment setting and TTS cache/quota controls. Keep the key in environment configuration; do not put it in the audio library JSON.
 
 ##  Configuration (`.env`)
 
@@ -60,6 +81,10 @@ AT_TRANSFER_URL=https://voice.africastalking.com/callTransfer
 
 # Public Callback URL (Exposed via ngrok or cloud host)
 PUBLIC_CALLBACK_URL=https://your-domain.ngrok-free.app/voice/callback
+
+# Optional interactive IVR destinations (leave blank if not configured)
+AUDIO_MENU_URL=
+CUSTOMER_SUPPORT_PHONE_NUMBER=
 ```
 
 ---

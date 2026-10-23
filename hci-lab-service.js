@@ -176,16 +176,9 @@ class HciLabService {
    * POST /api/v1/asr
    */
   async transcribeAudio(audioBuffer, filename = 'recording.mp3') {
-    // Pillar 6: Strict Test & CI Isolation
     if (this.isTestEnvironment()) {
-      console.log('[HCI Lab ASR] 🛡️ [Pillar 6 Isolation] Test environment detected. Returning deterministic fixture (0 live quota burned).');
-      return {
-        success: true,
-        circuitBreaker: false,
-        transcript: 'Mepɛ sɛ memane sika aduonum kɔma Kwame Mensah',
-        language: 'tw',
-        mocked: true
-      };
+      console.warn('[HCI Lab ASR] Skipping live transcription in test environment.');
+      return { success: false, circuitBreaker: false, transcript: '' };
     }
 
     if (!this.apiKey) {
@@ -290,15 +283,9 @@ class HciLabService {
       };
     }
 
-    // Pillar 6: Strict Test & CI Isolation
     if (this.isTestEnvironment()) {
-      console.log('[HCI Lab TTS] 🛡️ [Pillar 6 Isolation] Test environment detected. Returning mock audio URL (0 live quota burned).');
-      return {
-        audioUrl: `${baseUrl}/audio/mock_twi.wav`,
-        filePath: cachedFilePath,
-        cached: true,
-        quotaUsed: false
-      };
+      console.warn('[HCI Lab TTS] Skipping live synthesis in test environment.');
+      return null;
     }
 
     // Check circuit breaker

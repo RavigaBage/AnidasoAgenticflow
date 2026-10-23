@@ -6,6 +6,8 @@
 const aiAgent = require('./ai-agent');
 const transcriptionService = require('./transcription');
 const hciLabService = require('./hci-lab-service');
+const audioArranger = require('./audio-arranger');
+const path = require('path');
 
 /**
  * Escape XML-special characters so caller/AI-controlled text can be safely
@@ -18,6 +20,53 @@ function escapeXml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+async function buildSpokenOutput(session, userTranscription, assistantReply) {
+  if (session.language !== 'twi') {
+    return {
+      tag: `<Say voice="en-US-Standard-C">${escapeXml(assistantReply)}</Say>`,
+      arrangement: []
+    };
+  }
+
+  const recentConversation = (session.conversation || []).slice(-4).map(turn => ({
+    user: turn.userTranscript,
+    assistant: turn.aiResponse
+  }));
+  const arrangement = await aiAgent.arrangeVoiceReply({
+    userTranscription,
+    assistantReply,
+    conversation: recentConversation
+  });
+  const outputTags = [];
+  const publicBaseUrl = (hciLabService.publicBaseUrl || '').replace(/\/$/, '');
+
+  for (const segment of arrangement) {
+    if (segment.type === 'clip') {
+      const audioPath = segment.file.split('/').map(encodeURIComponent).join('/');
+      const audioUrl = `${publicBaseUrl}/Audio_library/${audioPath}`;
+      outputTags.push(`<Play url="${escapeXml(audioUrl)}"/>`);
+      continue;
+    }
+
+    try {
+      const synth = await hciLabService.synthesizeSpeech(segment.text);
+      if (synth?.audioUrl) {
+        outputTags.push(`<Play url="${escapeXml(synth.audioUrl)}"/>`);
+      } else {
+        outputTags.push(`<Say voice="en-US-Standard-C">${escapeXml(segment.text)}</Say>`);
+      }
+    } catch (err) {
+      console.warn('[IVR ENGINE] Error synthesizing arranged audio:', err.message);
+      outputTags.push(`<Say voice="en-US-Standard-C">${escapeXml(segment.text)}</Say>`);
+    }
+  }
+
+  if (outputTags.length === 0) {
+    outputTags.push(`<Say voice="en-US-Standard-C">${escapeXml(assistantReply)}</Say>`);
+  }
+  return { tag: outputTags.join('\n    '), arrangement };
 }
 
 class IvrEngine {
@@ -333,22 +382,13 @@ class IvrEngine {
       session.asrProvider = 'ug_hci';
       console.log(`[IVR ENGINE] 🇬🇭 Caller selected TWI! Switched ASR provider to UG_HCI_LAB_API_KEY.`);
 
-      const twiGreeting = "Akwaaba ba Okwankyerefopa MTN Mobile Money. Sɛ worepɛ sɛ womane sika a, ka sɛ mane sika anaa mia baako. Sɛ worepɛ sɛ wohwɛ wo sika a, ka sɛ hwɛ sika anaa mia mmienu. Sɛ worepɛ sɛ woyi sika a, ka sɛ yi sika anaa mia mmiɛnsa. Yɛretie wo.";
-
-      let twiPromptTag = `<Say voice="en-US-Standard-C">${escapeXml(twiGreeting)}</Say>`;
-      try {
-        const synth = await hciLabService.synthesizeSpeech(twiGreeting, callbackUrl);
-        if (synth && synth.audioUrl) {
-          twiPromptTag = `<Play url="${escapeXml(synth.audioUrl)}"/>`;
-        }
-      } catch (err) {
-        console.warn('[IVR ENGINE] Error synthesizing Twi greeting:', err.message);
-      }
+      const twiGreeting = 'Welcome. I can help you send money, check your balance, or withdraw cash. Please tell me what you need.';
+      const twiGreetingAudio = await buildSpokenOutput(session, userSpeech || 'Option 2 (Twi)', twiGreeting);
 
       // Turn 1 Conversational Mode: Play native Twi greeting and immediately beep and record caller's spoken request
       const xml = `<Response>
   <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
-    ${twiPromptTag}
+    ${twiGreetingAudio.tag}
   </Record>
 </Response>`;
 
@@ -389,9 +429,10 @@ class IvrEngine {
         ? "I didn't hear your response. To send money, press 1 or say send money. For account balance, press 2. To withdraw cash, press 3. Please speak your choice or press a key."
         : "I didn't catch that. Please speak after the tone, or enter your choice on the keypad, followed by the hash key.";
 
+      const silenceAudio = await buildSpokenOutput(session, '', silenceReply);
       const xml = `<Response>
   <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="true"${callbackAttr}>
-    <Say voice="en-US-Standard-C">${escapeXml(silenceReply)}</Say>
+    ${silenceAudio.tag}
   </Record>
 </Response>`;
 
@@ -478,21 +519,11 @@ class IvrEngine {
     }
 
     // 3. Return XML to speak the AI answer back to caller and keep listening
-    let spokenOutputTag = `<Say voice="en-US-Standard-C">${escapeXml(aiReply)}</Say>`;
-    if (session.language === 'twi') {
-      try {
-        const synth = await hciLabService.synthesizeSpeech(aiReply, callbackUrl);
-        if (synth && synth.audioUrl) {
-          spokenOutputTag = `<Play url="${escapeXml(synth.audioUrl)}"/>`;
-        }
-      } catch (err) {
-        console.warn('[IVR ENGINE] Error synthesizing Twi audio:', err.message);
-      }
-    }
+    const spokenOutput = await buildSpokenOutput(session, userSpeech, aiReply);
 
     const xml = `<Response>
   <Record finishOnKey="#" maxLength="${recordMaxLength}" timeout="${recordTimeout}" trimSilence="true" playBeep="false"${callbackAttr}>
-    ${spokenOutputTag}
+    ${spokenOutput.tag}
   </Record>
 </Response>`;
 
@@ -546,7 +577,7 @@ class IvrEngine {
     if (session.step === 0 || !dtmfDigits) {
       const xml = `<Response>
   <GetDigits timeout="25" finishOnKey="#" numDigits="1">
-    <Say voice="en-US-Standard-C" playBeep="false">Welcome to the Africa's Talking Phone Simulator. Press 1 to check your account balance. Press 2 to hear sample audio playback. Press 3 to leave a voice recording. Press 0 to connect to customer support.</Say>
+    <Say voice="en-US-Standard-C" playBeep="false">Welcome to the Africa's Talking Phone Simulator. Press 1 for balance guidance. Press 2 for configured audio playback. Press 3 to leave a voice recording. Press 0 to connect to customer support.</Say>
   </GetDigits>
   <Say voice="en-US-Standard-C">We did not receive any key input. Thank you for testing Africa's Talking. Goodbye.</Say>
 </Response>`;
@@ -561,16 +592,14 @@ class IvrEngine {
     switch (digit) {
       case '1': {
         const xml = `<Response>
-  <Say voice="en-US-Standard-C">Your current simulated account balance is 4,750 Kenyan Shillings. Thank you for calling.</Say>
+  <Say voice="en-US-Standard-C">Balance inquiries are not available in this menu. Please use the official mobile money channel to check your balance.</Say>
 </Response>`;
-        return { xml, summary: 'Option 1: Account Balance' };
+        return { xml, summary: 'Option 1: Balance Guidance' };
       }
       case '2': {
-        const xml = `<Response>
-  <Say voice="en-US-Standard-C">Now playing sample audio.</Say>
-  <Play url="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"/>
-  <Say voice="en-US-Standard-C">Playback completed.</Say>
-</Response>`;
+        const xml = this.audioMenuUrl
+          ? `<Response><Play url="${escapeXml(this.audioMenuUrl)}"/></Response>`
+          : '<Response><Say voice="en-US-Standard-C">Audio playback is not configured.</Say></Response>';
         return { xml, summary: 'Option 2: Audio Playback' };
       }
       case '3': {
@@ -582,10 +611,10 @@ class IvrEngine {
         return { xml, summary: 'Option 3: Voice Recording' };
       }
       case '0': {
-        const xml = `<Response>
-  <Say voice="en-US-Standard-C">Connecting you to an agent. Please hold.</Say>
-  <Dial phoneNumbers="+254711082999" record="true" sequential="false" maxDuration="60"/>
-</Response>`;
+        const supportPhoneNumber = process.env.CUSTOMER_SUPPORT_PHONE_NUMBER;
+        const xml = supportPhoneNumber
+          ? `<Response><Say voice="en-US-Standard-C">Connecting you to an agent. Please hold.</Say><Dial phoneNumbers="${escapeXml(supportPhoneNumber)}" record="true" sequential="false" maxDuration="60"/></Response>`
+          : '<Response><Say voice="en-US-Standard-C">Customer support is not configured. Please try again later.</Say></Response>';
         return { xml, summary: 'Option 0: Dial Agent' };
       }
       default: {

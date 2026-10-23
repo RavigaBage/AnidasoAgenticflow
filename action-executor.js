@@ -62,7 +62,7 @@ class ActionExecutor {
         type: "function",
         function: {
           name: "send_money_mtn",
-          description: "Execute MTN MoMo transfer. Call ONLY after KYC is verified and caller explicitly approved ('yes', 'confirm', or DTMF 1).",
+          description: "Execute MTN MoMo transfer only after KYC is verified and the caller says approves, approval can be in the form 'yes, send' in direct response to the final read-back.",
           parameters: {
             type: "object",
             properties: {
@@ -81,7 +81,7 @@ class ActionExecutor {
               },
               reference: {
                 type: "string",
-                description: "Reference note or reason for the transaction"
+                description: "Reference note or the spoken value 'no reference' if the caller gave none"
               },
               registered_name: {
                 type: "string",
@@ -89,7 +89,7 @@ class ActionExecutor {
               },
               confirm: {
                 type: "boolean",
-                description: "True ONLY if caller said 'yes', 'confirm', or 'I approve' in response to your final approval prompt"
+                description: "True only after the caller says 'yes, send' in direct response to the final read-back"
               }
             },
             required: ["number", "network", "amount", "reference", "registered_name", "confirm"]
@@ -194,7 +194,7 @@ class ActionExecutor {
       }
 
       case 'send_money_mtn': {
-        const { number, network = 'MTN', amount, reference = 'Transfer', registered_name, confirm } = params;
+        const { number, network = 'MTN', amount, reference = 'No reference', registered_name, confirm } = params;
 
         if (!confirm) {
           return {

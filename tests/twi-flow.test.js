@@ -54,8 +54,11 @@ async function testTwiFlow() {
   if (session2.asrProvider !== 'ug_hci') {
     throw new Error(`FAIL: Session ASR provider should be 'ug_hci', got '${session2.asrProvider}'`);
   }
-  if (!t1Result.aiReply.includes('Akwaaba')) {
-    throw new Error('FAIL: AI reply should contain Akwaaba Twi greeting');
+    if (t1Result.aiReply.includes('Akwaaba') || !t1Result.aiReply.includes('Welcome')) {
+      throw new Error('Twi-selected session should keep the agent reply in English');
+    }
+    if (!t1Result.xml.includes('/audio/mock_twi.wav')) {
+      throw new Error('Twi-selected session should use HCI TTS audio when available');
   }
   console.log('  PASS  Option 2 cleanly switches session to Twi & UG HCI Lab');
 

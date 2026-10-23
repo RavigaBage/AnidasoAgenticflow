@@ -16,7 +16,7 @@ class TranscriptionService {
   }
 
   reloadConfig() {
-    this.provider = process.env.ASR_PROVIDER || 'groq'; // 'groq' | 'ug_hci' | 'custom' | 'mock'
+    this.provider = process.env.ASR_PROVIDER || 'groq'; // 'groq' | 'ug_hci' | 'custom'
     // Prioritize dedicated audio/speech key (GROQ_TTS_KEY or GROQ_STT_KEY), fallback to GROQ_API_KEY
     this.groqApiKey = process.env.GROQ_TTS_KEY || process.env.GROQ_STT_KEY || process.env.GROQ_API_KEY || '';
     this.keySource = process.env.GROQ_TTS_KEY ? 'GROQ_TTS_KEY (dedicated speech/audio)' : (process.env.GROQ_STT_KEY ? 'GROQ_STT_KEY (dedicated speech/audio)' : 'GROQ_API_KEY (shared)');

@@ -32,6 +32,7 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/Audio_library', express.static(path.join(__dirname, 'Audio_library')));
 
 // Health check endpoint for Render zero-downtime health monitoring
 app.get('/health', (req, res) => {
@@ -407,8 +408,8 @@ app.get('/api/services/mtn/config', (req, res) => {
 // MoMo Send Money / Transfer (Disbursement)
 app.post('/api/services/mtn/send-money', requireApiKey, async (req, res) => {
   const { number, amount, reference, currency, network } = req.body;
-  if (!number || !amount) {
-    return res.status(400).json({ success: false, error: 'Recipient number and amount are required' });
+  if (!number || !momoService.formatMsisdn(number) || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+    return res.status(400).json({ success: false, error: 'A valid recipient number and positive amount are required' });
   }
 
   try {
@@ -428,7 +429,10 @@ app.post('/api/services/mtn/send-money', requireApiKey, async (req, res) => {
 // MoMo KYC / Basic User Info Lookup
 app.post('/api/services/mtn/kyc', async (req, res) => {
   const { number, phoneNumber, product = 'collection' } = req.body;
-  const targetNumber = number || phoneNumber || '0244123456';
+  const targetNumber = number || phoneNumber;
+  if (!targetNumber) {
+    return res.status(400).json({ success: false, error: 'Phone number is required' });
+  }
 
   try {
     const result = await momoService.getBasicUserInfo(targetNumber, product);
@@ -465,6 +469,9 @@ app.post('/api/services/mtn/check-balance', async (req, res) => {
 // MoMo Cash Out / Withdrawal (RequestToPay)
 app.post('/api/services/mtn/cash-out', requireApiKey, async (req, res) => {
   const { number, amount, note, cash_out_confirmation } = req.body;
+  if (!number || !momoService.formatMsisdn(number) || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+    return res.status(400).json({ success: false, error: 'A valid customer number and positive amount are required' });
+  }
   try {
     const result = await momoService.withdrawCash({
       number,
@@ -593,8 +600,8 @@ app.post('/api/test-ai', async (req, res) => {
 
   try {
     const callContext = {
-      callerNumber: req.body.callerNumber || '+233244123456',
-      destinationNumber: req.body.destinationNumber || '+254711082000',
+      callerNumber: req.body.callerNumber,
+      destinationNumber: req.body.destinationNumber,
       direction: req.body.direction || 'Inbound',
       dtmfDigits: req.body.dtmfDigits
     };

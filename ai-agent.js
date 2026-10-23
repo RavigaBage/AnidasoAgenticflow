@@ -17,6 +17,48 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const actionExecutor = require('./action-executor');
+const audioArranger = require('./audio-arranger');
+
+function normalizeSpokenValue(value) {
+  return String(value || '').toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function integerToEnglishWords(value) {
+  const small = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  const underThousand = number => {
+    if (number < 20) return small[number];
+    if (number < 100) return `${tens[Math.floor(number / 10)]}${number % 10 ? ` ${small[number % 10]}` : ''}`;
+    return `${small[Math.floor(number / 100)]} hundred${number % 100 ? ` ${underThousand(number % 100)}` : ''}`;
+  };
+  if (!Number.isInteger(value) || value < 0 || value >= 1000000) return '';
+  if (value < 1000) return underThousand(value);
+  const thousands = Math.floor(value / 1000);
+  const remainder = value % 1000;
+  return `${underThousand(thousands)} thousand${remainder ? ` ${underThousand(remainder)}` : ''}`;
+}
+
+function readbackContainsTransferDetails(readback, params) {
+  const normalizedReadback = normalizeSpokenValue(readback);
+  const number = String(params.number || '').replace(/\D/g, '');
+  const name = normalizeSpokenValue(params.registered_name);
+  const network = normalizeSpokenValue(params.network || 'MTN');
+  const reference = normalizeSpokenValue(params.reference || 'No reference');
+  const amount = Number(params.amount);
+  const amountValue = String(params.amount ?? '').replace(/,/g, '');
+  const amountWords = Number.isInteger(amount) ? normalizeSpokenValue(integerToEnglishWords(amount)) : '';
+  const escapedAmount = amountValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const amountIncluded = amountValue && new RegExp(`(?:^|\\D)${escapedAmount}(?:\\D|$)`).test(readback) ||
+    Boolean(amountWords && normalizedReadback.includes(amountWords));
+
+  return Boolean(
+    number && readback.replace(/\D/g, '').includes(number) &&
+    name && normalizedReadback.includes(name) &&
+    network && normalizedReadback.includes(network) &&
+    reference && normalizedReadback.includes(reference) &&
+    amountIncluded
+  );
+}
 
 /**
  * CallSessionMemory
@@ -134,6 +176,9 @@ class CallSessionMemory {
       if (result.subscriberName) {
         this.slots.verifiedKycName = result.subscriberName;
       }
+      if (result.success) {
+        this.slots.recipientNetwork = 'MTN';
+      }
       if (result.discrepancyWarning) {
         this.slots.discrepancyWarning = result.discrepancyWarning;
       }
@@ -147,7 +192,7 @@ class CallSessionMemory {
 
   buildSystemPrompt(baseSystemPrompt) {
     const kycState = [
-      `Language: ${this.language === 'twi' ? 'Twi (Akan) - Respond in Twi!' : 'English'}`,
+      `Caller language: ${this.language === 'twi' ? 'Twi (Akan)' : 'English'}. Always reply in simple English.`,
       `Recipient: ${this.slots.recipientNumber || 'None'} (${this.slots.recipientNetwork || 'Unknown'})`,
       `KYC Registered Name: ${this.slots.verifiedKycName || 'NOT YET VERIFIED (call verify_kyc_mtn first)'}`,
       this.slots.statedRecipientName ? `Caller Stated Name: ${this.slots.statedRecipientName}` : null,
@@ -277,41 +322,40 @@ class AiAgent {
   }
 
   buildSystemPrompt() {
-    return `You are Okwankyerefopa, a humble, patient phone helper for MTN Mobile Money (MoMo) in Ghana.
-VOICE & TONE:
-- Speak respectfully and warmly in everyday Ghanaian English. Strictly 1 to 2 spoken sentences (under 30 words).
-- Say "please" often. Never speak internal monologue or instructions. No markdown, emojis, or technical jargon (say "check", "send", "name registered to this number").
+     return `ROLE
+  You are Okwankyerefopa, a caring voice assistant for elderly, visually impaired, and low-literacy users in Ghana. You help with services such as bill payments and mobile money transfers.
 
-MENU & INTENT:
-- 1 / "Send Money": gather recipient number, amount, reference, verify KYC, and confirm before sending.
-- 2 / "Check Balance": call check_balance_mtn for caller line.
-- 3 / "Withdraw Money": call cash_out_mtn once caller confirms.
-- Direct Intent: If caller states what they want right away, reason directly without forcing menu options.
+  LANGUAGE AND VOICE
+  - Understand English and Twi. Always reply in simple English, even when the caller speaks Twi or selected Twi.
+  - Use short, clear sentences with one idea at a time. No lists, symbols, markdown, emojis, or jargon in spoken replies.
+  - Offer to repeat or speak more slowly when the caller seems unsure.
+  - Say amounts in full. Read phone numbers digit by digit in small groups.
 
-GHANA MOBILE NETWORKS:
-- MTN: 024, 054, 055, 059, 025. Telecel: 020, 050. AirtelTigo: 027, 057, 026, 056.
-- If number is unrecognized or not 10 digits: "[number], this is the number I got. Mobile Money requires a 10-digit MTN, Telecel, or AirtelTigo number. Please check the number."
+  PERSONALITY AND SPEED
+  - Be calm, patient, and respectful. Never rush, scold, or sound suspicious.
+  - Show empathy only when the caller's own speech clearly describes hardship or emotion. If appropriate, use one brief, genuine sentence before asking for details. Do not force empathy into routine requests or guess how the caller feels.
+  - Gather multiple missing details in one short question. Reuse details already provided and never ask for the same detail twice.
+  - Understand direct requests without making the caller navigate a menu.
 
-SEND MONEY SEQUENCE & ANTI-FRAUD RULES:
-1. Spoken Number: When a 10-digit number is spoken, call verify_kyc_mtn(number, stated_name).
-2. Missing Fields:
-   - If amount missing: state registered name (or discrepancy), ask for amount in Ghana Cedis.
-   - If reference missing: ask for reference note (e.g. "What is the note for this transfer, like school fees or thank you?").
-3. Final Approval (Speak ONCE only when number, name, amount, and reference are ALL known):
-   "You are about to send [amount] Ghana Cedis to an [network] number, [number]. The name registered to this number is [name], and the reference is [reference]. Do you approve to these before initiating?"
-4. Execution:
-   - ONLY when caller explicitly confirms ("yes", "confirm", "I approve", or enters 1), call send_money_mtn(confirm=true).
-   - If caller says "no" or "cancel": "Transfer cancelled. Please provide the correct recipient phone number."
-5. Anti-Hallucination:
-   - NEVER call tools or use phone numbers/amounts unless explicitly spoken by caller. Never invent data.
+  MOBILE MONEY SAFETY (HIGHEST PRIORITY)
+  - Verify unclear details. Never invent or guess a phone number, network, registered name, amount, or reference.
+  - For a recipient number, use verify_kyc_mtn and rely only on its returned registered name and network. If verification is unavailable, do not proceed.
+  - Compare the caller's stated recipient/network with the verified network and registered name. If anything differs, pause, explain the mismatch gently, and ask the caller to clarify. Do not send while a discrepancy remains.
+  - Before a transfer, collect and confirm the number, network, registered name, amount, and reference. If no reference was given, say "no reference" aloud.
+  - Read all details back together in this order: grouped phone number, network, registered name, amount, and reference. If no reference was given, say "no reference" aloud.
+  - Ask the caller to say "yes, send" to proceed. "OK", "go", silence, or a keypad press alone is not approval.
+  - Execute send_money_mtn only after the caller says "yes, send" in direct response to that final summary. Do not execute on approval given earlier in the conversation.
+  - If the caller says no or cancels, do not execute.
+  - If the request includes a lost phone, changed recipient, urgent pressure, or an unfamiliar recipient, gently verify that the intended recipient asked for the payment. Do not accuse the caller.
+  - Never ask for or handle a PIN. The caller enters it on their own device or wallet prompt.
+  - After a transaction, state the amount, recipient, and whether it succeeded or failed in one or two short sentences.
 
-LANGUAGE RULES:
-- If caller chose Twi or speaks Twi, respond warmly in natural Twi (Akan):
-  * Send money: "Mane sika. Kyerɛ me fon nɔmba a worepɛ sɛ womane sika no kɔ so."
-  * Amount: "Sika ahe na worepɛ sɛ womane kɔ [nɔmba] so?"
-  * Check balance: "Yɛrehwɛ wo sika ama wo. Wobɛtumi nso apɔsɔ star one seven zero hash wɔ wo fon so."
-  * Confirm: "Worepɛ sɛ womane [amount] Ghana Cedis kɔ [number] a din a ɛda so ne [name]. Wopene so anaa?"
-- If caller chose English or speaks English, respond in English.`;
+  NETWORKS AND SERVICES
+  - MTN prefixes: 024, 054, 055, 059, 025. Telecel: 020, 050. AirtelTigo: 027, 057, 026, 056. Use the verification tool, not prefixes alone, as the source of the recipient's network.
+  - Send Money: collect missing recipient number, amount, and reference efficiently; verify KYC; resolve mismatches; read the final summary; then wait for "yes, send".
+  - Check Balance: use check_balance_mtn for the caller's line.
+  - Withdraw Money: use cash_out_mtn only after clear confirmation.
+  - Never use a PIN or caller silence as consent.`;
   }
 
   getConfigSummary() {
@@ -437,6 +481,41 @@ LANGUAGE RULES:
     }
   }
 
+  async arrangeVoiceReply({ userTranscription, assistantReply, conversation = [] }) {
+    const audioLibraryDirectory = path.join(__dirname, 'Audio_library');
+    const clips = audioArranger.loadAudioLibrary(audioLibraryDirectory);
+    const fallback = audioArranger.fallbackArrangement(assistantReply);
+    if (!this.apiKey || !assistantReply || process.env.NODE_ENV === 'test' || process.env.CI || process.env.VITEST) {
+      return fallback;
+    }
+
+    try {
+      const arrangementPrompt = audioArranger.buildArrangementPrompt({
+        userTranscription,
+        assistantReply,
+        conversation: conversation.slice(-6),
+        clips
+      });
+      const response = await this.callGroq({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You arrange caller-facing audio only. Return valid JSON matching the requested schema. Preserve every assistant-reply word and value exactly, in order. Never add words or infer audio content.'
+          },
+          { role: 'user', content: arrangementPrompt }
+        ],
+        temperature: 0,
+        max_tokens: 500
+      });
+      const content = response.data?.choices?.[0]?.message?.content;
+      return audioArranger.parseArrangement(content, assistantReply, clips) || fallback;
+    } catch (err) {
+      console.warn('[Audio Arranger] Arrangement request failed; using full-reply TTS:', err.message);
+      return fallback;
+    }
+  }
+
   /**
    * Process user speech, let the agent reason autonomously, and execute actions when triggered.
    * Returns reply, actionExecuted, and high-resolution latency metrics.
@@ -507,6 +586,39 @@ LANGUAGE RULES:
           actionParams = JSON.parse(toolCall.function.arguments);
         } catch (e) {
           console.warn('[AI Agent] Could not parse tool arguments:', toolCall.function.arguments);
+        }
+
+        if (actionName === 'send_money_mtn') {
+          const previousAssistantReply = messages.slice(0, -1).reverse()
+            .find(item => item.role === 'assistant')?.content || '';
+          const callerApproved = /^yes\s*,?\s*(?:please\s+)?send(?:\s+it)?[.!]?$/i.test(userTranscript.trim());
+          const approvalWasRequested = /yes\s*,\s*send/i.test(previousAssistantReply);
+          const kycMatches = sessionMem.slots.kycVerifiedNumber === String(actionParams.number || '') &&
+            sessionMem.slots.verifiedKycName === String(actionParams.registered_name || '') &&
+            sessionMem.slots.recipientNetwork === String(actionParams.network || 'MTN') &&
+            !sessionMem.slots.discrepancyWarning;
+          const detailsWereReadBack = readbackContainsTransferDetails(previousAssistantReply, actionParams);
+
+          if (!callerApproved || !approvalWasRequested || !kycMatches || !detailsWereReadBack) {
+            const safeReply = !kycMatches
+              ? 'I have not sent the money. I need to verify the recipient details again before I can continue.'
+              : !detailsWereReadBack
+                ? 'I have not sent the money. I need to read back all the transfer details before I can continue.'
+                : 'I have not sent the money. Please review the details and say yes, send if you want me to proceed.';
+            messages.push({ role: 'assistant', content: safeReply });
+            sessionMem.recordTurn(userTranscript, safeReply, null);
+            return {
+              reply: safeReply,
+              actionExecuted: null,
+              metrics: {
+                llmDurationMs,
+                toolExecutionMs: 0,
+                totalDurationMs: Date.now() - startTime
+              }
+            };
+          }
+
+          actionParams.confirm = true;
         }
 
         console.log(`[AI Agent] ⚡ Agent Reasoned Action: ${actionName} with params:`, actionParams);

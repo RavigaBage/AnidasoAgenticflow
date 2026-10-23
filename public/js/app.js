@@ -1141,7 +1141,11 @@
       // KYC Button Click
       if (els.btnRunMomoKyc) {
         els.btnRunMomoKyc.addEventListener('click', () => {
-          const number = els.momoKycPhone ? els.momoKycPhone.value.trim() : '0244123456';
+          const number = els.momoKycPhone?.value.trim() || '';
+          if (!number) {
+            showToast('Enter a phone number before requesting KYC.', 'error');
+            return;
+          }
           els.btnRunMomoKyc.disabled = true;
           els.btnRunMomoKyc.textContent = '⏳ Querying Live MTN KYC...';
           fetch('/api/services/mtn/kyc', {
@@ -1189,9 +1193,13 @@
       // Transfer Button Click
       if (els.btnRunMomoTransfer) {
         els.btnRunMomoTransfer.addEventListener('click', () => {
-          const number = els.momoTransferPhone ? els.momoTransferPhone.value.trim() : '0244123456';
-          const amount = els.momoTransferAmount ? els.momoTransferAmount.value : '10';
-          const reference = els.momoTransferRef ? els.momoTransferRef.value : 'Test Transfer';
+          const number = els.momoTransferPhone?.value.trim() || '';
+          const amount = els.momoTransferAmount?.value || '';
+          const reference = els.momoTransferRef?.value || '';
+          if (!number || !amount) {
+            showToast('Enter a recipient number and amount before transferring.', 'error');
+            return;
+          }
           els.btnRunMomoTransfer.disabled = true;
           els.btnRunMomoTransfer.textContent = '⏳ Submitting Live Transfer...';
           fetch('/api/services/mtn/send-money', {
@@ -1217,8 +1225,12 @@
       // Cashout Button Click
       if (els.btnRunMomoCashout) {
         els.btnRunMomoCashout.addEventListener('click', () => {
-          const number = els.momoCashoutPhone ? els.momoCashoutPhone.value.trim() : '0244123456';
-          const amount = els.momoCashoutAmount ? els.momoCashoutAmount.value : '10';
+          const number = els.momoCashoutPhone?.value.trim() || '';
+          const amount = els.momoCashoutAmount?.value || '';
+          if (!number || !amount) {
+            showToast('Enter a customer number and amount before cashing out.', 'error');
+            return;
+          }
           els.btnRunMomoCashout.disabled = true;
           els.btnRunMomoCashout.textContent = '⏳ Submitting Request To Pay...';
           fetch('/api/services/mtn/cash-out', {
