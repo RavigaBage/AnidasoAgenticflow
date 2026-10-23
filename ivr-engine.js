@@ -540,7 +540,8 @@ class IvrEngine {
       targetSubTwoSeconds: totalTurnMs < 2000,
       keysUsed: {
         audioWhisper: session.language === 'twi' ? 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)' : transcriptionService.keySource,
-        llmReasoning: aiAgent.keySource
+        llmReasoning: aiAgent.keySource,
+        audioAgent: session.language === 'twi' ? aiAgent.audioKeySource : 'N/A'
       }
     };
 
@@ -551,10 +552,13 @@ class IvrEngine {
     console.log(`⏱️  [VOICE PIPELINE LATENCY PROFILER] Turn ${session.step} (Session: ${session.sessionId})`);
     console.log(`------------------------------------------------------`);
     console.log(`1. Audio Download    : ${(latencyBreakdown.downloadMs).toString().padStart(5)} ms (${latencyBreakdown.audioBytes} bytes)`);
-    console.log(`2. Groq Whisper (STT): ${(latencyBreakdown.sttMs).toString().padStart(5)} ms [${transcriptionService.keySource || 'GROQ_TTS_KEY'}]`);
+    console.log(`2. Groq Whisper (STT): ${(latencyBreakdown.sttMs).toString().padStart(5)} ms [${session.language === 'twi' ? 'UG_HCI_LAB_API_KEY' : (transcriptionService.keySource || 'GROQ_TTS_KEY')}]`);
     console.log(`3. Groq LLM Agent    : ${(latencyBreakdown.llmMs).toString().padStart(5)} ms [${aiAgent.keySource || 'GROQ_LLM_KEY'}]`);
+    if (session.language === 'twi') {
+      console.log(`4. Audio Decision AI : [${aiAgent.audioKeySource || 'GROQ_AUDIO_AGENT_KEY'}]`);
+    }
     if (latencyBreakdown.toolMs > 0) {
-      console.log(`4. MoMo Tool Action  : ${(latencyBreakdown.toolMs).toString().padStart(5)} ms`);
+      console.log(`5. MoMo Tool Action  : ${(latencyBreakdown.toolMs).toString().padStart(5)} ms`);
     }
     console.log(`------------------------------------------------------`);
     console.log(`⚡ TOTAL TURN TIME   : ${(totalTurnMs).toString().padStart(5)} ms ${totalTurnMs < 2000 ? '✅ [SUB-2S TARGET MET]' : '⚠️ [OVER 2S BUDGET]'}`);

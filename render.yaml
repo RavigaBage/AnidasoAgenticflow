@@ -31,6 +31,16 @@ services:
         sync: false
       - key: GROQ_LLM_KEY
         sync: false
+      - key: GROQ_AUDIO_AGENT_KEY
+        sync: false
+      - key: UG_HCI_LAB_API_KEY
+        sync: false
+      - key: UG_HCI_LAB_URL
+        value: https://lab-subscription-platform.vercel.app
+      - key: CUSTOMER_SUPPORT_PHONE_NUMBER
+        sync: false
+      - key: AUDIO_MENU_URL
+        sync: false
       - key: DASHBOARD_API_KEY
         sync: false
       - key: VOICE_WEBHOOK_TIMEOUT_MS

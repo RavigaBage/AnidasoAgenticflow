@@ -112,6 +112,7 @@ async function testTwiFlow() {
   console.log('  PASS  Turn 2 in Twi session hands over audio to UG HCI Lab');
 
   console.log('\n🎉 ALL TWI FLOW TESTS PASSED!\n');
+  process.exit(0);
 }
 
 testTwiFlow().catch(err => {

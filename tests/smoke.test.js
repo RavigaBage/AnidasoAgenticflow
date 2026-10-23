@@ -163,6 +163,7 @@ async function postForm(url, fields) {
     const asrMod = require('../transcription');
     const audioArranger = require('../audio-arranger');
     check('aiAgent.getConfigSummary() returns valid config', typeof aiAgentMod.getConfigSummary === 'function' && Boolean(aiAgentMod.getConfigSummary().model));
+    check('aiAgent exposes audioKeySource for audio decisions', typeof aiAgentMod.getConfigSummary().audioKeySource === 'string');
     check('transcription.getConfigSummary() returns valid config', typeof asrMod.getConfigSummary === 'function' && Boolean(asrMod.getConfigSummary().whisperModel));
     check('agent prompt always replies in English', aiAgentMod.systemPrompt.includes('Always reply in simple English'));
 

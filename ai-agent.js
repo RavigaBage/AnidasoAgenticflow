@@ -272,6 +272,13 @@ class AiAgent {
     // Prioritize dedicated LLM reasoning key (GROQ_LLM_KEY), fallback to GROQ_API_KEY
     this.apiKey = process.env.GROQ_LLM_KEY || process.env.GROQ_API_KEY || '';
     this.keySource = process.env.GROQ_LLM_KEY ? 'GROQ_LLM_KEY (dedicated LLM)' : 'GROQ_API_KEY (shared)';
+
+    // Dedicated key for AI audio decision / audio arranger
+    this.audioAgentKey = process.env.GROQ_AUDIO_AGENT_KEY || process.env.GROQ_TTS_KEY || this.apiKey;
+    this.audioKeySource = process.env.GROQ_AUDIO_AGENT_KEY
+      ? 'GROQ_AUDIO_AGENT_KEY (dedicated audio arranger)'
+      : (process.env.GROQ_TTS_KEY ? 'GROQ_TTS_KEY (fallback speech/audio)' : this.keySource);
+
     this.model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
     this.fallbackModel = process.env.GROQ_FALLBACK_MODEL || 'qwen/qwen3.8-27b';
     this.apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
@@ -285,16 +292,6 @@ class AiAgent {
         sessionMem.llmMessages[0].content = sessionMem.buildSystemPrompt(this.systemPrompt);
       }
     }
-  }
-
-  getConfigSummary() {
-    this.reloadConfig();
-    return {
-      model: this.model,
-      fallbackModel: this.fallbackModel,
-      keySource: this.keySource,
-      isConfigured: Boolean(this.apiKey)
-    };
   }
 
   loadServicesMemory() {
@@ -362,9 +359,14 @@ class AiAgent {
     this.reloadConfig();
     return {
       model: this.model,
+      fallbackModel: this.fallbackModel,
+      keySource: this.keySource,
+      audioKeySource: this.audioKeySource,
+      isConfigured: Boolean(this.apiKey),
+      isAudioAgentConfigured: Boolean(this.audioAgentKey),
       hasKey: Boolean(this.apiKey && this.apiKey.startsWith('gsk_')),
       provider: 'Groq Cloud',
-      organization: this.servicesMemory.organization || 'Okwankyerefopa MTN MoMo',
+      organization: this.servicesMemory?.organization || 'Okwankyerefopa MTN MoMo',
       activeSessionMemoriesCount: this.sessionMemories.size
     };
   }
@@ -453,9 +455,10 @@ class AiAgent {
    * If the primary model hits a rate limit, it immediately attempts the fallbackModel
    * (e.g. llama-3.1-8b-instant) with 0ms sleep because Groq tracks limits per-model!
    */
-  async callGroq(payload) {
+  async callGroq(payload, customApiKey = null) {
+    const activeKey = customApiKey || this.apiKey;
     const headers = {
-      'Authorization': `Bearer ${this.apiKey}`,
+      'Authorization': `Bearer ${activeKey}`,
       'Content-Type': 'application/json'
     };
 
@@ -482,14 +485,17 @@ class AiAgent {
   }
 
   async arrangeVoiceReply({ userTranscription, assistantReply, conversation = [] }) {
+    this.reloadConfig();
     const audioLibraryDirectory = path.join(__dirname, 'Audio_library');
     const clips = audioArranger.loadAudioLibrary(audioLibraryDirectory);
     const fallback = audioArranger.fallbackArrangement(assistantReply);
-    if (!this.apiKey || !assistantReply || process.env.NODE_ENV === 'test' || process.env.CI || process.env.VITEST) {
+    const effectiveAudioKey = this.audioAgentKey || this.apiKey;
+    if (!effectiveAudioKey || !assistantReply || process.env.NODE_ENV === 'test' || process.env.CI || process.env.VITEST) {
       return fallback;
     }
 
     try {
+      console.log(`[Audio Arranger] 🎧 Audio decision AI using ${this.audioKeySource}`);
       const arrangementPrompt = audioArranger.buildArrangementPrompt({
         userTranscription,
         assistantReply,
@@ -507,7 +513,7 @@ class AiAgent {
         ],
         temperature: 0,
         max_tokens: 500
-      });
+      }, effectiveAudioKey);
       const content = response.data?.choices?.[0]?.message?.content;
       return audioArranger.parseArrangement(content, assistantReply, clips) || fallback;
     } catch (err) {

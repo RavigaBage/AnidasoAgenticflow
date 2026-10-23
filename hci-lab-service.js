@@ -284,8 +284,13 @@ class HciLabService {
     }
 
     if (this.isTestEnvironment()) {
-      console.warn('[HCI Lab TTS] Skipping live synthesis in test environment.');
-      return null;
+      console.log('[HCI Lab TTS] 🛡️ [Pillar 6 Isolation] Test environment detected. Returning mock audio URL (0 live quota burned).');
+      return {
+        audioUrl: `${baseUrl}/audio/mock_twi.wav`,
+        filePath: cachedFilePath,
+        cached: true,
+        quotaUsed: false
+      };
     }
 
     // Check circuit breaker
