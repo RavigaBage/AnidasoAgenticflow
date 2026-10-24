@@ -336,7 +336,8 @@ class AiAgent {
 
   MOBILE MONEY SAFETY (HIGHEST PRIORITY)
   - Verify unclear details. Never invent or guess a phone number, network, registered name, amount, or reference.
-  - For a recipient number, use verify_kyc_mtn and rely only on its returned registered name and network. If verification is unavailable, do not proceed.
+  - If the caller only names a recipient (e.g. "Kwame") or asks to send money without giving a phone number, ALWAYS ask for their 10-digit phone number first. NEVER call verify_kyc_mtn until the caller has provided an actual phone number.
+  - For a recipient number, use verify_kyc_mtn only after a phone number is provided, and rely only on its returned registered name and network. If verification is unavailable, do not proceed.
   - Compare the caller's stated recipient/network with the verified network and registered name. If anything differs, pause, explain the mismatch gently, and ask the caller to clarify. Do not send while a discrepancy remains.
   - Before a transfer, collect and confirm the number, network, registered name, amount, and reference. If no reference was given, say "no reference" aloud.
   - Read all details back together in this order: grouped phone number, network, registered name, amount, and reference. If no reference was given, say "no reference" aloud.
@@ -592,6 +593,25 @@ class AiAgent {
           actionParams = JSON.parse(toolCall.function.arguments);
         } catch (e) {
           console.warn('[AI Agent] Could not parse tool arguments:', toolCall.function.arguments);
+        }
+
+        if (actionName === 'verify_kyc_mtn') {
+          const cleanNum = String(actionParams.number || '').replace(/\D/g, '');
+          if (!cleanNum || cleanNum.length < 9) {
+            const recipientName = actionParams.stated_name || 'the recipient';
+            const safeReply = `What is ${recipientName}'s 10-digit mobile phone number?`;
+            messages.push({ role: 'assistant', content: safeReply });
+            sessionMem.recordTurn(userTranscript, safeReply, null);
+            return {
+              reply: safeReply,
+              actionExecuted: null,
+              metrics: {
+                llmDurationMs,
+                toolExecutionMs: 0,
+                totalDurationMs: Date.now() - startTime
+              }
+            };
+          }
         }
 
         if (actionName === 'send_money_mtn') {

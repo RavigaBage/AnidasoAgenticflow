@@ -41,7 +41,7 @@ class ActionExecutor {
         type: "function",
         function: {
           name: "verify_kyc_mtn",
-          description: "Verify subscriber name and active account on MTN Mobile Money. Call when a 10-digit number is spoken, before asking for final approval.",
+          description: "Verify subscriber registered name on MTN Mobile Money. Call ONLY when a 10-digit phone number has been provided by the caller. NEVER call with an empty, missing, or placeholder number.",
           parameters: {
             type: "object",
             properties: {
@@ -158,6 +158,20 @@ class ActionExecutor {
     switch (actionName) {
       case 'verify_kyc_mtn': {
         const { number, stated_name } = params;
+        const cleanNumber = String(number || '').replace(/\D/g, '');
+        if (!cleanNumber || cleanNumber.length < 9) {
+          return {
+            success: false,
+            action: actionName,
+            phoneNumber: number || '',
+            statedName: stated_name || null,
+            error: 'Missing recipient phone number. A 10-digit phone number is required before KYC verification.',
+            promptMessage: stated_name
+              ? `What is ${stated_name}'s phone number?`
+              : 'What is the recipient phone number you would like to send money to?'
+          };
+        }
+
         const momoRes = await momoService.getBasicUserInfo(number, 'collection');
 
         let nameMatch = null;
@@ -186,7 +200,7 @@ class ActionExecutor {
           nameMatch,
           discrepancyWarning,
           promptMessage: !momoRes.success
-            ? `Mobile Money verification for ${number} failed. ${momoRes.promptMessage || 'No registration details could be retrieved for this number.'}`
+            ? `I could not find an active Mobile Money account for ${number}. Please verify the number and try again.`
             : discrepancyWarning
               ? `The phone number ${number} is registered to ${momoRes.subscriberName} on Mobile Money, not ${stated_name}.`
               : `The phone number ${number} is officially registered to ${momoRes.subscriberName} on Mobile Money.`

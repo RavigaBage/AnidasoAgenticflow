@@ -368,8 +368,8 @@ class IvrEngine {
 
     // Language Selection Handling: If caller selected Twi (Keypad 2 or spoken Akan)
     const cleanDigits = dtmfDigits ? String(dtmfDigits).replace(/#/g, '').trim() : '';
-    const isTwiChosen = cleanDigits === '2' || cleanDigits.startsWith('2') || /\b(twi|akan|kasa|mepe|mepɛ|akwaaba|mane|sika)\b/i.test(userSpeech);
-    const isEnglishChosen = cleanDigits === '1' || /\b(english|brofo)\b/i.test(userSpeech);
+    const isTwiChosen = cleanDigits === '2' || cleanDigits.startsWith('2') || /\b(twi|chi|chwi|chee|tshwi|akan|kasa|mepe|mepɛ|akwaaba|mane|sika|two)\b/i.test(userSpeech);
+    const isEnglishChosen = cleanDigits === '1' || /\b(english|brofo|one)\b/i.test(userSpeech);
 
     if (isEnglishChosen && session.language !== 'en') {
       session.language = 'en';
