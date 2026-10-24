@@ -17,6 +17,9 @@ class TranscriptionService {
 
   reloadConfig() {
     this.provider = process.env.ASR_PROVIDER || 'groq'; // 'groq' | 'ug_hci' | 'custom'
+    // Twi ASR Provider: 'groq' (Whisper with Akan vocabulary) or 'ug_hci' (UG HCI Lab)
+    this.twiProvider = process.env.TWI_ASR_PROVIDER || 'groq';
+
     // Prioritize dedicated audio/speech key (GROQ_TTS_KEY or GROQ_STT_KEY), fallback to GROQ_API_KEY
     this.groqApiKey = process.env.GROQ_TTS_KEY || process.env.GROQ_STT_KEY || process.env.GROQ_API_KEY || '';
     this.keySource = process.env.GROQ_TTS_KEY ? 'GROQ_TTS_KEY (dedicated speech/audio)' : (process.env.GROQ_STT_KEY ? 'GROQ_STT_KEY (dedicated speech/audio)' : 'GROQ_API_KEY (shared)');
@@ -31,6 +34,7 @@ class TranscriptionService {
     this.reloadConfig();
     return {
       provider: this.provider,
+      twiProvider: this.twiProvider,
       whisperModel: this.whisperModel,
       keySource: this.keySource,
       isConfigured: Boolean(this.groqApiKey),
@@ -57,8 +61,9 @@ class TranscriptionService {
     this.reloadConfig();
     const startTime = Date.now();
 
-    const activeProvider = options.provider || (options.language === 'twi' ? 'ug_hci' : this.provider);
-    const isTwi = options.language === 'twi' || activeProvider === 'ug_hci' || activeProvider === 'ug_hci_lab';
+    const isTwi = options.language === 'twi' || options.provider === 'ug_hci' || options.provider === 'ug_hci_lab';
+    const activeProvider = options.provider || (isTwi ? this.twiProvider : this.provider);
+    const isUgHci = activeProvider === 'ug_hci' || activeProvider === 'ug_hci_lab';
 
     const metrics = {
       downloadStartMs: startTime,
@@ -68,8 +73,8 @@ class TranscriptionService {
       totalDurationMs: 0,
       attempts: 0,
       provider: activeProvider,
-      model: isTwi ? 'UG HCI Lab Akan/Twi ASR' : this.whisperModel,
-      keySource: isTwi ? 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)' : this.keySource
+      model: isUgHci ? 'UG HCI Lab Akan/Twi ASR' : this.whisperModel,
+      keySource: isUgHci ? 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)' : (isTwi ? `${this.keySource} (Whisper Twi mode)` : this.keySource)
     };
 
     if (!recordingUrl) {
@@ -90,7 +95,7 @@ class TranscriptionService {
     console.log(`🎙️ [ASR SERVICE] Processing Audio Recording`);
     console.log(`Original URL : ${recordingUrl}`);
     console.log(`Candidate URL: ${cleanUrl}`);
-    console.log(`Provider     : ${activeProvider} (${isTwi ? 'UG HCI Lab Twi' : this.whisperModel})`);
+    console.log(`Provider     : ${activeProvider} (${isUgHci ? 'UG HCI Lab Twi' : `${this.whisperModel} [${isTwi ? 'Akan Twi prompt' : 'English'}]`})`);
     console.log(`======================================================`);
 
     let audioBuffer = null;
@@ -152,7 +157,7 @@ class TranscriptionService {
     // 2. Transcribe buffer
     const sttStart = Date.now();
     console.log(`🎙️ [ASR Transcribing] Sending ${audioBuffer.length} bytes to ${isTwi ? 'UG HCI Lab (Twi ASR)' : `Groq Whisper (${this.whisperModel})`}...`);
-    const rawTranscript = await this.transcribeBuffer(audioBuffer, 'recording.mp3', activeProvider);
+    const rawTranscript = await this.transcribeBuffer(audioBuffer, 'recording.mp3', activeProvider, isTwi ? 'twi' : (options.language || 'en'));
     metrics.sttDurationMs = Date.now() - sttStart;
     metrics.totalDurationMs = Date.now() - startTime;
 
@@ -186,17 +191,17 @@ class TranscriptionService {
   /**
    * Transcribe raw audio buffer
    */
-  async transcribeBuffer(audioBuffer, filename = 'audio.mp3', provider = this.provider) {
+  async transcribeBuffer(audioBuffer, filename = 'audio.mp3', provider = this.provider, language = 'en') {
     switch (provider) {
       case 'ug_hci':
       case 'ug_hci_lab':
         return await this.transcribeWithUgHciLab(audioBuffer, filename);
       case 'groq':
-        return await this.transcribeWithGroqWhisper(audioBuffer, filename);
+        return await this.transcribeWithGroqWhisper(audioBuffer, filename, language);
       case 'custom':
         return await this.transcribeWithCustomProvider(audioBuffer);
       default:
-        return await this.transcribeWithGroqWhisper(audioBuffer, filename);
+        return await this.transcribeWithGroqWhisper(audioBuffer, filename, language);
     }
   }
 
@@ -242,7 +247,7 @@ class TranscriptionService {
 
         if (language === 'twi' || language === 'tw') {
           // Akan Twi prompt so Whisper does not mangle Akan phrases into English
-          formData.append('prompt', 'Akan Twi, MTN Mobile Money Ghana, mepɛ sɛ memane sika, hwɛ me sika, yi sika, sika, nɔmba, aduonum, Kwame, Mensah, cedis');
+          formData.append('prompt', 'Akan, Twi, Asante Twi, Akuapem Twi. Mepɛ sɛ memane sika. Mane sika. Hwɛ me sika balance. Yi sika cash out. Cedis, pesewas, sika, nɔmba, aduonum, ɔha, apem. Kwame, Kofi, Yaw, Kwadwo, Kwabena, Mensah, Akua, Ama. MTN Mobile Money Ghana MoMo, Telecel, AirtelTigo. Aane, dabi, yiw.');
         } else {
           formData.append('language', 'en');
           formData.append('prompt', 'MTN Mobile Money Ghana MoMo, cedis, Telecel, AirtelTigo, send money, cash out, balance enquiry, numbers');

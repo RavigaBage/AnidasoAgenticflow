@@ -33,6 +33,8 @@ services:
         sync: false
       - key: GROQ_AUDIO_AGENT_KEY
         sync: false
+      - key: TWI_ASR_PROVIDER
+        value: groq
       - key: UG_HCI_LAB_API_KEY
         sync: false
       - key: UG_HCI_LAB_URL

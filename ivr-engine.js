@@ -337,7 +337,7 @@ class IvrEngine {
       }
       const asrOptions = {
         includeMetrics: true,
-        provider: session.asrProvider || (session.language === 'twi' ? 'ug_hci' : undefined),
+        provider: session.asrProvider || (session.language === 'twi' ? transcriptionService.twiProvider : undefined),
         language: session.language || 'en'
       };
       const asrResult = await transcriptionService.transcribeAudioFromUrl(recordingUrl, asrOptions);
@@ -379,8 +379,8 @@ class IvrEngine {
 
     if (isTwiChosen && session.language !== 'twi') {
       session.language = 'twi';
-      session.asrProvider = 'ug_hci';
-      console.log(`[IVR ENGINE] 🇬🇭 Caller selected TWI! Switched ASR provider to UG_HCI_LAB_API_KEY.`);
+      session.asrProvider = transcriptionService.twiProvider || process.env.TWI_ASR_PROVIDER || 'groq';
+      console.log(`[IVR ENGINE] 🇬🇭 Caller selected TWI! Switched ASR provider to ${session.asrProvider === 'ug_hci' ? 'UG_HCI_LAB_API_KEY' : 'Groq Whisper (Akan Twi mode)'}.`);
 
       const twiGreeting = 'Welcome. I can help you send money, check your balance, or withdraw cash. Please tell me what you need.';
       const twiGreetingAudio = await buildSpokenOutput(session, userSpeech || 'Option 2 (Twi)', twiGreeting);
@@ -404,7 +404,9 @@ class IvrEngine {
         totalTurnMs,
         targetSubTwoSeconds: true,
         keysUsed: {
-          audioWhisper: 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)',
+          audioWhisper: session.asrProvider === 'ug_hci'
+            ? 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)'
+            : `${transcriptionService.keySource} (Whisper Twi mode)`,
           llmReasoning: 'Language Switch Fast-Path'
         }
       };
@@ -414,7 +416,7 @@ class IvrEngine {
 
       return {
         xml,
-        summary: 'Language switched to Twi (UG HCI Lab ASR active)',
+        summary: `Language switched to Twi (${session.asrProvider === 'ug_hci' ? 'UG HCI Lab' : 'Groq Whisper'} ASR active)`,
         transcript: userSpeech || 'Option 2 (Twi)',
         aiReply: twiGreeting,
         actionExecuted: null,
@@ -539,7 +541,9 @@ class IvrEngine {
       totalTurnMs,
       targetSubTwoSeconds: totalTurnMs < 2000,
       keysUsed: {
-        audioWhisper: session.language === 'twi' ? 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)' : transcriptionService.keySource,
+        audioWhisper: session.language === 'twi'
+          ? (session.asrProvider === 'ug_hci' ? 'UG_HCI_LAB_API_KEY (University of Ghana HCI Lab)' : `${transcriptionService.keySource} (Whisper Twi mode)`)
+          : transcriptionService.keySource,
         llmReasoning: aiAgent.keySource,
         audioAgent: session.language === 'twi' ? aiAgent.audioKeySource : 'N/A'
       }
@@ -548,11 +552,15 @@ class IvrEngine {
     session.latencies = session.latencies || [];
     session.latencies.push(latencyBreakdown);
 
+    const activeAsrLabel = session.language === 'twi'
+      ? (session.asrProvider === 'ug_hci' ? 'UG_HCI_LAB_API_KEY' : `${transcriptionService.keySource || 'GROQ_TTS_KEY'} (Whisper Twi)`)
+      : (transcriptionService.keySource || 'GROQ_TTS_KEY');
+
     console.log(`\n======================================================`);
     console.log(`⏱️  [VOICE PIPELINE LATENCY PROFILER] Turn ${session.step} (Session: ${session.sessionId})`);
     console.log(`------------------------------------------------------`);
     console.log(`1. Audio Download    : ${(latencyBreakdown.downloadMs).toString().padStart(5)} ms (${latencyBreakdown.audioBytes} bytes)`);
-    console.log(`2. Groq Whisper (STT): ${(latencyBreakdown.sttMs).toString().padStart(5)} ms [${session.language === 'twi' ? 'UG_HCI_LAB_API_KEY' : (transcriptionService.keySource || 'GROQ_TTS_KEY')}]`);
+    console.log(`2. Groq Whisper (STT): ${(latencyBreakdown.sttMs).toString().padStart(5)} ms [${activeAsrLabel}]`);
     console.log(`3. Groq LLM Agent    : ${(latencyBreakdown.llmMs).toString().padStart(5)} ms [${aiAgent.keySource || 'GROQ_LLM_KEY'}]`);
     if (session.language === 'twi') {
       console.log(`4. Audio Decision AI : [${aiAgent.audioKeySource || 'GROQ_AUDIO_AGENT_KEY'}]`);
